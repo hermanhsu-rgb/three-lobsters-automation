@@ -214,14 +214,19 @@ def spawn_agent_and_execute(who, task):
     try:
         # 真正spawn子agent
         agent = AIAgent(
-            model="anthropic/claude-sonnet-4",
+            model="glm-5",
             enabled_toolsets=["feishu_doc", "file"],
             max_iterations=10,
             quiet_mode=True
         )
         
         result = agent.run_conversation(prompt)
-        print(f"[完成] 子agent返回: {result[:200] if result else '无输出'}")
+        # 安全处理返回值
+        if result:
+            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
+        else:
+            result_str = '无输出'
+        print(f"[完成] 子agent返回: {result_str}")
         return True
         
     except Exception as e:
