@@ -15,8 +15,28 @@ from datetime import datetime
 import urllib.request
 import subprocess
 
-# 配置
-FEISHU_APP_ID = os.environ.get('FEISHU_APP_ID', 'cli_a934f35cd8385cc0')
+# 从.env文件加载环境变量
+def load_env():
+    """从.env文件加载环境变量"""
+    env_paths = [
+        '/root/.hermes/.env',
+        '/home/vip/.hermes/.env',
+        os.path.expanduser('~/.hermes/.env')
+    ]
+    for path in env_paths:
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    if '=' in line and not line.startswith('#'):
+                        key, value = line.strip().split('=', 1)
+                        if key not in os.environ:
+                            os.environ[key] = value
+            break
+
+load_env()
+
+# 配置 - 全部从环境变量读取
+FEISHU_APP_ID = os.environ.get('FEISHU_APP_ID', '')
 FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET', '')
 SIGNIN_FOLDER_ID = os.environ.get('SIGNIN_FOLDER_ID', 'TUcWf6Kyql4d6gdi1nWc7TxVnDe')
 MESSAGE_BOARD_ID = os.environ.get('MESSAGE_BOARD_ID', 'Lj0OdVYvuoAKvVxOxr0crc9ynWg')
