@@ -157,9 +157,13 @@ def check_task_completion(message_board_content):
 
 
 def spawn_pm_thinking_agent(token, completions):
-    """生成PM思考子agent"""
+    """真正spawn PM思考子agent"""
     # 读取项目整体进度
     project_content = read_doc(token, PROJECT_DOC_ID)
+    
+    # 导入Hermes AIAgent
+    sys.path.insert(0, '/root/.hermes/hermes-agent')
+    from run_agent import AIAgent
     
     # 构造思考prompt
     prompt = f"""你是🦬爱马仕，PM角色。
@@ -169,40 +173,35 @@ def spawn_pm_thinking_agent(token, completions):
 项目任务分配表：
 {project_content}
 
-请思考：
+请思考并发布下一个任务。要求：
 1. 确认完成情况
-2. 评估项目进度
-3. 决定下一步做什么
-4. 发布新任务（指定执行者）
+2. 决定下一步做什么
+3. 使用feishu_doc技能在留言板({MESSAGE_BOARD_ID})发布新任务
 
-返回JSON格式：
-{{
-  "check_result": "完成确认",
-  "progress": "进度评估", 
-  "next_task": {{
-    "id": "T9",
-    "content": "任务内容",
-    "assignee": "🐂阿呆"
-  }}
-}}
+发布格式：
+[时间] 🦬爱马仕 发布任务
+T数字: 任务内容 → 🐂阿呆/🦜小结巴
+
+直接执行，返回发布结果。
 """
     
-    # 写入思考文件供子agent读取
-    thinking_file = os.path.expanduser("~/.hermes/shared/pm_thinking.json")
-    os.makedirs(os.path.dirname(thinking_file), exist_ok=True)
+    print(f"[spawn] 启动PM子agent思考...")
     
-    thinking_data = {
-        'timestamp': datetime.now().isoformat(),
-        'completions': completions,
-        'project_content': project_content,
-        'prompt': prompt
-    }
-    
-    with open(thinking_file, 'w') as f:
-        json.dump(thinking_data, f, ensure_ascii=False, indent=2)
-    
-    print(f"[PM思考] 已写入 {thinking_file}")
-    return thinking_file
+    try:
+        agent = AIAgent(
+            model="anthropic/claude-sonnet-4",
+            enabled_toolsets=["feishu_doc", "file"],
+            max_iterations=10,
+            quiet_mode=True
+        )
+        
+        result = agent.run_conversation(prompt)
+        print(f"[完成] PM子agent返回: {result[:200] if result else '无输出'}")
+        return True
+        
+    except Exception as e:
+        print(f"[错误] PM spawn失败: {e}")
+        return False
 
 
 def checkout_signin(token, who):
