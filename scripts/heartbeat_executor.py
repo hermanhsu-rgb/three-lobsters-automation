@@ -70,7 +70,7 @@ def get_token():
     })
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             return result.get('tenant_access_token')
     except Exception as e:
@@ -86,7 +86,7 @@ def read_doc(token, doc_id):
     })
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             texts = []
             for item in result.get('data', {}).get('items', []):
@@ -113,7 +113,7 @@ def append_to_doc(token, doc_id, content):
     }, method='POST')
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             return result.get('code') == 0
     except Exception as e:
@@ -128,7 +128,7 @@ def get_today_signin_doc(token):
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
@@ -157,7 +157,7 @@ def send_feishu_message(token, content):
     }, method='POST')
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             return result.get('code') == 0
     except Exception as e:

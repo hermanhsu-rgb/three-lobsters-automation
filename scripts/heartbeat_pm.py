@@ -62,7 +62,7 @@ def get_token():
         'Content-Type': 'application/json; charset=utf-8'
     })
     
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         result = json.loads(resp.read().decode('utf-8'))
         if result.get('code') == 0:
             return result.get('tenant_access_token')
@@ -77,7 +77,7 @@ def read_doc(token, doc_id):
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             texts = []
             for item in result.get('data', {}).get('items', []):
@@ -104,7 +104,7 @@ def append_to_doc(token, doc_id, content):
     }, method='POST')
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             return result.get('code') == 0
     except Exception as e:
@@ -119,7 +119,7 @@ def get_today_signin_doc(token):
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
@@ -146,7 +146,7 @@ def send_feishu_message(token, content):
     }, method='POST')
     
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
             return result.get('code') == 0
     except Exception as e:
@@ -211,14 +211,19 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
     
     try:
         agent = AIAgent(
-            model="anthropic/claude-sonnet-4",
+            model="glm-5",
             enabled_toolsets=["feishu_doc", "file"],
             max_iterations=10,
             quiet_mode=True
         )
         
         result = agent.run_conversation(prompt)
-        print(f"[完成] PM子agent返回: {result[:200] if result else '无输出'}")
+        # 安全处理返回值
+        if result:
+            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
+        else:
+            result_str = '无输出'
+        print(f"[完成] PM子agent返回: {result_str}")
         return True
         
     except Exception as e:
