@@ -46,16 +46,16 @@ def get_token():
     }).encode('utf-8')
     
     req = urllib.request.Request(url, data=data, headers={
-        'Content-Type': 'application/json; charset=utf-8'
+        'Content-Type': 'application/json'
     })
     
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        result = json.loads(resp.read().decode('utf-8'))
-        if result.get('code') == 0:
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
             return result.get('tenant_access_token')
-        else:
-            print(f"[ERROR] 获取token失败: {result}")
-            return None
+    except Exception as e:
+        print(f"[ERROR] 获取token失败: {e}")
+        return None
 
 
 def read_doc(token, doc_id):
@@ -167,36 +167,47 @@ def find_my_task(message_board_content, who):
 
 
 def spawn_agent_and_execute(who, task):
-    """生成子agent执行任务"""
+    """真正spawn子agent执行任务 - 使用Hermes AIAgent"""
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    # 使用hermes的delegate_task功能
-    # 这里用subprocess调用hermes CLI
-    prompt = f"""你是{emoji} {name}，你需要执行任务：{task['id']}: {task['content']}
+    content = task.get('content', '')
+    task_id = task.get('id', '?')
+    
+    print(f"[spawn] 启动子agent执行: {task_id}: {content}")
+    
+    # 导入Hermes AIAgent
+    sys.path.insert(0, '/root/.hermes/hermes-agent')
+    from run_agent import AIAgent
+    
+    # 构造prompt
+    prompt = f"""你是{emoji}{name}，执行任务 {task_id}。
 
-请执行这个任务：
-1. 查看任务详情
-2. 执行具体操作（修改飞书文档、查询资料等）
-3. 完成后在留言板交任务
+任务内容: {content}
 
-完成后返回执行结果。
+要求：
+1. 使用feishu-doc技能完成任务（修改留言板文档：{MESSAGE_BOARD_ID})
+2. 在留言板写入：✅ {task_id}完成
+3. 不要解释，直接执行并返回结果
 """
     
-    # 写入任务文件供子agent读取
-    task_file = os.path.expanduser(f"~/.hermes/shared/current_task_{who}.json")
-    os.makedirs(os.path.dirname(task_file), exist_ok=True)
-    with open(task_file, 'w') as f:
-        json.dump({
-            'who': who,
-            'task': task,
-            'timestamp': datetime.now().isoformat()
-        }, f, ensure_ascii=False)
-    
-    print(f"[子agent] 任务已写入 {task_file}")
-    print(f"[子agent] 请手动触发子agent执行，或等待下一轮cron")
-    
-    return True
+    try:
+        # 真正spawn子agent
+        agent = AIAgent(
+            model="anthropic/claude-sonnet-4",
+            enabled_toolsets=["feishu_doc", "file"],
+            max_iterations=10,
+            quiet_mode=True
+        )
+        
+        result = agent.run_conversation(prompt)
+        print(f"[完成] 子agent返回: {result[:200] if result else '无输出'}")
+        return True
+        
+    except Exception as e:
+        print(f"[错误] spawn失败: {e}")
+        # 备用方案：直接写飞书
+        return False
 
 
 def checkout_signin(token, who):
