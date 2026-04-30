@@ -225,28 +225,38 @@ def save_completed_tasks(who, completed_set):
 
 def find_my_task(message_board_content, who):
     """从留言板找分配给自己的任务（排除已完成的）"""
-    emoji = WHO_EMOJI.get(who, '❓')
+    import re
     name = WHO_NAME.get(who, '未知')
     
     # 加载已完成任务
     completed = load_completed_tasks(who)
     
-    # 查找格式：T8: xxx → 🐂阿呆
+    # 支持两种格式：
+    # 1. 单行：T1: 任务内容 @阿呆
+    # 2. 多行：T1: 任务内容\n执行人：阿呆
     lines = message_board_content.split('\n')
-    for line in lines:
-        if 'T' in line and ':' in line:
-            # 检查是否分配给自己
-            if emoji in line or name in line:
-                # 提取任务ID和内容
-                # 格式可能：T8: 任务内容 → 🐂阿呆
-                parts = line.split('→')[0].strip()
-                if parts.startswith('T'):
-                    task_id = parts.split(':')[0].strip()
-                    # 跳过已完成的任务
-                    if task_id in completed:
-                        continue
-                    task_content = parts.split(':', 1)[1].strip() if ':' in parts else ''
-                    return {'id': task_id, 'content': task_content, 'raw': line}
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # 匹配 T1: 或 T2: 等任务开头
+        match = re.match(r'(T\d+):', line)
+        if match:
+            task_id = match.group(1)
+            # 跳过已完成的任务
+            if task_id in completed:
+                i += 1
+                continue
+            
+            # 检查当前行和接下来3行是否有自己的名字
+            check_lines = [line] + lines[i+1:i+4]
+            check_text = '\n'.join(check_lines)
+            
+            if name in check_text:
+                # 提取任务内容（冒号后到行尾）
+                pos = line.find(':')
+                task_content = line[pos+1:].strip()
+                return {'id': task_id, 'content': task_content, 'raw': check_text}
+        i += 1
     return None
 
 
