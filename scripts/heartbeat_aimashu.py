@@ -331,3 +331,8 @@ def heartbeat_pm(who):
 
 
 if __name__ == '__main__':
+    if not FEISHU_APP_SECRET:
+        print("[ERROR] 未设置 FEISHU_APP_SECRET 环境变量")
+        sys.exit(1)
+    
+    heartbeat("aimashu")
