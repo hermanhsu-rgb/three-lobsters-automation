@@ -15,6 +15,14 @@ import urllib.request
 
 import subprocess
 
+# 导入执行记录模块
+try:
+    from summary_logger import record_action
+except ImportError:
+    # 如果导入失败，定义空函数
+    def record_action(action, detail='', who=None):
+        pass
+
 # 从.env文件加载环境变量
 def load_env():
     """从.env文件加载环境变量"""
@@ -416,6 +424,7 @@ def heartbeat_pm(who):
     # 2. 签到
     if checkout_signin(token, who):
         print("[OK] 签到成功")
+        record_action('签到', '成功', who='aimashu')
     
 # 3. 读留言板
     message_board_id = get_current_message_board(token)
@@ -484,6 +493,7 @@ def heartbeat_pm(who):
         task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
         append_to_doc(token, message_board_id, task_text)
         print(f"[发布] {next_task_id} 已分配给 {assignee_name}（轮流）")
+        record_action('发布任务', f'{next_task_id} → {assignee_name}', who='aimashu')
         
         # 发消息触发执行者
         trigger_msg = f"🦬爱马仕 发布新任务：{next_task_id}，请 {assignee_emoji}{assignee_name} 执行"
@@ -500,8 +510,13 @@ def heartbeat_pm(who):
             assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
             assignee_name = WHO_NAME.get(next_executor, '未知')
             
-            # 简单任务模板
-            task_id = f"T{int(datetime.now().timestamp()) % 1000}"
+            # 计算下一个任务号（按序列递增）
+            if all_tasks:
+                max_task_num = max(int(t[1:]) for t in all_tasks)  # 提取T后面的数字
+                next_task_num = max_task_num + 1 + i
+            else:
+                next_task_num = 1 + i
+            task_id = f"T{next_task_num}"
             task_content = f"测试任务 {task_id}"
             
             now = datetime.now().strftime('%H:%M')

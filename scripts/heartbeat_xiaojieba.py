@@ -14,6 +14,14 @@ from datetime import datetime
 import urllib.request
 import subprocess
 
+# 导入执行记录模块
+try:
+    from summary_logger import record_action
+except ImportError:
+    # 如果导入失败，定义空函数
+    def record_action(action, detail='', who=None):
+        pass
+
 # 从.env文件加载环境变量
 def load_env():
     """从.env文件加载环境变量"""
@@ -378,6 +386,7 @@ def heartbeat(who):
     # 2. 签到
     if checkout_signin(token, who):
         print("[OK] 签到成功")
+        record_action('签到', '成功', who='xiaojieba')
     else:
         print("[WARN] 签到失败")
     
@@ -402,6 +411,7 @@ def heartbeat(who):
         completed.add(task['id'])
         save_completed_tasks(who, completed)
         print(f"[记录] 任务 {task['id']} 已标记完成")
+        record_action('完成任务', f"{task['id']}: {task.get('content', '')}", who='xiaojieba')
         
         # 5. 交任务（留言板）
         now = datetime.now().strftime('%H:%M')
