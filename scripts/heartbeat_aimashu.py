@@ -239,38 +239,44 @@ def send_feishu_message(token, content):
 
 
 def check_task_completion(message_board_content):
-    """检查有没有人交任务 - 跨行检测"""
+    """检查有没有人交任务 - 只检测最近的任务完成标记"""
     completions = []
     lines = message_board_content.split('\n')
     
-    # 找所有完成行：✅ T数字 完成
-    for i, line in enumerate(lines):
-        if '✅' in line and '完成' in line:
-            # 提取任务ID
-            parts = line.split('✅')
-            if len(parts) > 1:
-                task_info = parts[1].strip()  # 如 "T1 完成"
-                task_id = task_info.split()[0] if task_info else '?'
-                
-                # 向上查找完成者（可能在前一行）
-                who = '未知'
-                for emoji in ['🐂', '🦜', '🦬']:
-                    # 检查当前行
-                    if emoji in line:
-                        who = emoji
-                        break
-                    # 检查前一行
-                    if i > 0 and emoji in lines[i-1]:
-                        who = emoji
-                        break
-                
-                completions.append({
-                    'who': who,
-                    'task': task_id,
-                    'line': line
-                })
+    # 只检测最近20行，避免误判旧数据
+    recent_lines = lines[-20:] if len(lines) > 20 else lines
     
-    return completions
+    # 找所有完成行：格式必须是 "[时间] 🐂/🦜 内容 ✅ T数字 完成"
+    for i, line in enumerate(recent_lines):
+        # 严格匹配：必须有emoji + ✅ + 完成 + T数字
+        if '✅' in line and '完成' in line:
+            # 检查是否有emoji
+            who = None
+            for emoji, name in [('🐂', 'adai'), ('🦜', 'xiaojieba')]:
+                if emoji in line:
+                    who = emoji
+                    break
+            
+            if who:
+                # 提取任务ID (如 T1, T2)
+                import re
+                task_match = re.search(r'T(\d+)', line)
+                if task_match:
+                    completions.append({
+                        'who': who,
+                        'task': f"T{task_match.group(1)}"
+                    })
+    
+    # 去重
+    seen = set()
+    unique_completions = []
+    for c in completions:
+        key = f"{c['who']}-{c['task']}"
+        if key not in seen:
+            seen.add(key)
+            unique_completions.append(c)
+    
+    return unique_completions
 
 
 def has_pending_tasks(message_board_content):
@@ -319,6 +325,15 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
     print(f"[spawn] 启动PM子agent思考...")
     
     try:
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("PM子agent超时")
+        
+        # 设置60秒超时
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(60)
+        
         agent = AIAgent(
             model="glm-5",
             enabled_toolsets=["feishu_doc", "file"],
@@ -327,6 +342,8 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
         )
         
         result = agent.run_conversation(prompt)
+        signal.alarm(0)  # 取消超时
+        
         # 安全处理返回值
         if result:
             result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
@@ -335,8 +352,13 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
         print(f"[完成] PM子agent返回: {result_str}")
         return True
         
+    except TimeoutError:
+        print(f"[WARN] PM子agent超时(60s)，跳过")
+        signal.alarm(0)
+        return False
     except Exception as e:
         print(f"[错误] PM spawn失败: {e}")
+        signal.alarm(0)
         return False
 
 
