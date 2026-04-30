@@ -353,18 +353,48 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
         return False
 
 
+def get_next_executor():
+    """轮流分配下一个执行者"""
+    # 执行者列表
+    executors = ['adai', 'xiaojieba']
+    
+    # 读取上次分配给谁
+    last_file = os.path.expanduser('~/.hermes/logs/last_executor.json')
+    if os.path.exists(last_file):
+        try:
+            with open(last_file) as f:
+                last = json.load(f).get('last')
+                # 找下一个
+                idx = executors.index(last) if last in executors else -1
+                next_idx = (idx + 1) % len(executors)
+        except:
+            next_idx = 0
+    else:
+        next_idx = 0
+    
+    next_executor = executors[next_idx]
+    
+    # 保存本次分配
+    os.makedirs(os.path.dirname(last_file), exist_ok=True)
+    with open(last_file, 'w') as f:
+        json.dump({'last': next_executor}, f)
+    
+    return next_executor
+
+
 def checkout_signin(token, who):
-    """签到打卡"""
+    """签到打卡 - 写在留言板"""
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    signin_doc_id = get_or_create_signin_doc(token)
-    if not signin_doc_id:
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print(f"[FAIL] 无法找到当前时段留言板")
         return False
     
     sign_text = f"{emoji} {name} 签到 | {now}"
-    append_to_doc(token, signin_doc_id, sign_text)
+    append_to_doc(token, message_board_id, sign_text)
     return True
 
 
@@ -388,7 +418,12 @@ def heartbeat_pm(who):
         print("[OK] 签到成功")
     
     # 3. 读留言板，检查有没有人交任务
-    message_board_content = read_doc(token, MESSAGE_BOARD_ID)
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print("[WARN] 无法找到当前时段留言板")
+        return False
+    
+    message_board_content = read_doc(token, message_board_id)
     completions = check_task_completion(message_board_content)
     
     if completions:
@@ -406,16 +441,21 @@ def heartbeat_pm(who):
             with open(result_file) as f:
                 result = json.load(f)
             
-            # 6. 发布新任务到留言板
+            # 6. 发布新任务到留言板（轮流分配）
             next_task = result.get('next_task')
             if next_task:
+                # 轮流分配
+                next_executor = get_next_executor()
+                assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
+                assignee_name = WHO_NAME.get(next_executor, '未知')
+                
                 now = datetime.now().strftime('%H:%M')
-                task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task['id']}: {next_task['content']} → {next_task['assignee']}\n"
-                append_to_doc(token, MESSAGE_BOARD_ID, task_text)
-                print(f"[发布] {next_task['id']} 已分配给 {next_task['assignee']}")
+                task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task['id']}: {next_task['content']} → {assignee_emoji}{assignee_name}\n"
+                append_to_doc(token, message_board_id, task_text)
+                print(f"[发布] {next_task['id']} 已分配给 {assignee_name}（轮流）")
                 
                 # 7. 发消息触发执行者
-                trigger_msg = f"🦬爱马仕 发布新任务：{next_task['id']}，请 {next_task['assignee']} 领取执行"
+                trigger_msg = f"🦬爱马仕 发布新任务：{next_task['id']}，请 {assignee_emoji}{assignee_name} 执行"
                 send_feishu_message(token, trigger_msg)
                 print(f"[触发] 已发消息触发执行者")
             
