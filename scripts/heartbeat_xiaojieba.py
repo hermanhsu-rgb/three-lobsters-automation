@@ -311,18 +311,19 @@ def spawn_agent_and_execute(who, task):
 
 
 def checkout_signin(token, who):
-    """签到打卡"""
-    now = datetime.now().strftime('%Y-%m-%d %H:%M')
+    """签到打卡 - 统一写在留言板"""
+    now = datetime.now().strftime('%H:%M')
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    signin_doc_id = get_current_signin_doc(token)
-    if not signin_doc_id:
-        print(f"[FAIL] 无法找到今日签到文档")
+    # 签到写在留言板，不找单独的签到文档
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print(f"[FAIL] 无法找到当前时段留言板")
         return False
     
     sign_text = f"{emoji} {name} 签到 | {now}"
-    append_to_doc(token, signin_doc_id, sign_text)
+    append_to_doc(token, message_board_id, sign_text)
     return True
 
 
