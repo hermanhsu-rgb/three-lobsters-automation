@@ -207,8 +207,9 @@ def spawn_pm_thinking_agent(token, completions):
     # 读取项目整体进度
     project_content = read_doc(token, PROJECT_DOC_ID)
     
-    # 导入Hermes AIAgent
-    sys.path.insert(0, '/root/.hermes/hermes-agent')
+    # 导入Hermes AIAgent - 动态路径适配各机器
+    hermes_agent_path = os.path.expanduser('~/.hermes/hermes-agent')
+    sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
     # 构造思考prompt
