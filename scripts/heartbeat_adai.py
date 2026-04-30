@@ -183,9 +183,17 @@ def get_current_signin_doc(token):
 
 
 def get_current_message_board(token):
-    """从签到文件夹找当前时间段的签到留言板（签到+任务+交付统一）"""
+    """从签到文件夹找当前时段的留言板（标准格式：YYYY-MM-DD-HH）"""
     today = datetime.now().strftime('%Y-%m-%d')
-    period_name, period_range, period_start = get_time_period()
+    hour = datetime.now().hour
+    if hour >= 18:
+        period_start = "18"
+    elif hour >= 12:
+        period_start = "12"
+    elif hour >= 6:
+        period_start = "06"
+    else:
+        period_start = "00"
     
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
@@ -195,26 +203,15 @@ def get_current_message_board(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                # 匹配：签到留言板 + 日期 + 时段（如-12）
-                if '签到' in name and today in name:
-                    # 优先找带时段后缀的
-                    if f'-{period_start}' in name:
-                        print(f"[OK] 找到当前时段签到留言板: {name}")
-                        return f.get('token')
+                # 严格匹配：签到留言板 + 日期 + 时段后缀（如-18）
+                if '签到留言板' in name and today in name and f'-{period_start}' in name:
+                    print(f"[OK] 找到当前时段留言板: {name}")
+                    return f.get('token')
             
-            # 没找到时段后缀，找当天无时段后缀的
-            for f in result.get('data', {}).get('files', []):
-                name = f.get('name', '')
-                if '签到' in name and today in name:
-                    # 排除带时段后缀的（如-12、-18）
-                    if not any(f'-{p}' in name for p in ['00', '06', '12', '18']):
-                        print(f"[OK] 找到当天签到留言板: {name}")
-                        return f.get('token')
-            
-            print(f"[WARN] 未找到签到留言板")
+            print(f"[WARN] 未找到当前时段留言板")
             return None
     except Exception as e:
-        print(f"[ERROR] 查找签到留言板失败: {e}")
+        print(f"[ERROR] 查找留言板失败: {e}")
         return None
 
 

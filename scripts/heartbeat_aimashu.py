@@ -146,51 +146,21 @@ def get_time_period():
         return "晚上", "18-24"
 
 
-def create_signin_doc(token):
-    """创建新的签到文档（爱马仕专用）"""
+# 爱马仕绝不创建新文档！只查找现有留言板
+
+
+def get_current_message_board(token):
+    """从签到文件夹找当前时段的留言板（标准格式：YYYY-MM-DD-HH）"""
     today = datetime.now().strftime('%Y-%m-%d')
-    period_name, period_range = get_time_period()
-    
-    title = f"📋 三小龙虾签到留言板 - {today} {period_name}"
-    
-    url = "https://open.feishu.cn/open-apis/docx/v1/documents"
-    data = json.dumps({"title": title}).encode('utf-8')
-    
-    req = urllib.request.Request(url, data=data, headers={
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }, method='POST')
-    
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-            if result.get('code') == 0:
-                doc_id = result['data']['document']['document_id']
-                print(f"[创建] 新签到文档: {title}")
-                
-                # 初始化内容
-                initial_content = f"""📋 三小龙虾签到留言板 - {today} {period_name}
-📅 时间段：{period_range}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 签到区域
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                append_to_doc(token, doc_id, initial_content)
-                return doc_id
-            else:
-                print(f"[ERROR] 创建文档失败: {result.get('msg')}")
-                return None
-    except Exception as e:
-        print(f"[ERROR] 创建文档异常: {e}")
-        return None
-
-
-def get_or_create_signin_doc(token):
-    """查找当前时段签到文档，不存在则创建（爱马仕专用）"""
-    today = datetime.now().strftime('%Y-%m-%d')
-    period_name, period_range = get_time_period()
+    hour = datetime.now().hour
+    if hour >= 18:
+        period_start = "18"
+    elif hour >= 12:
+        period_start = "12"
+    elif hour >= 6:
+        period_start = "06"
+    else:
+        period_start = "00"
     
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
@@ -200,16 +170,15 @@ def get_or_create_signin_doc(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                # 宽松匹配：包含今天日期 + (时间段 OR 无时间段后缀)
-                if today in name and (period_name in name or period_range in name or name.endswith(today) or name.endswith(today+')')):
-                    print(f"[OK] 找到当前时段签到文档: {name}")
+                # 严格匹配：签到留言板 + 日期 + 时段后缀（如-18）
+                if '签到留言板' in name and today in name and f'-{period_start}' in name:
+                    print(f"[OK] 找到当前时段留言板: {name}")
                     return f.get('token')
             
-            # 没找到，创建新的
-            print(f"[新建] 当前时段无签到文档，创建新文档...")
-            return create_signin_doc(token)
+            print(f"[WARN] 未找到当前时段留言板")
+            return None
     except Exception as e:
-        print(f"[ERROR] 查找签到文档失败: {e}")
+        print(f"[ERROR] 查找留言板失败: {e}")
         return None
 
 

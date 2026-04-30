@@ -180,6 +180,39 @@ def get_current_signin_doc(token):
         return None
 
 
+def get_current_message_board(token):
+    """从签到文件夹找当前时段的留言板（标准格式：YYYY-MM-DD-HH）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    hour = datetime.now().hour
+    if hour >= 18:
+        period_start = "18"
+    elif hour >= 12:
+        period_start = "12"
+    elif hour >= 6:
+        period_start = "06"
+    else:
+        period_start = "00"
+    
+    url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
+    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            for f in result.get('data', {}).get('files', []):
+                name = f.get('name', '')
+                # 严格匹配：签到留言板 + 日期 + 时段后缀（如-18）
+                if '签到留言板' in name and today in name and f'-{period_start}' in name:
+                    print(f"[OK] 找到当前时段留言板: {name}")
+                    return f.get('token')
+            
+            print(f"[WARN] 未找到当前时段留言板")
+            return None
+    except Exception as e:
+        print(f"[ERROR] 查找留言板失败: {e}")
+        return None
+
+
 def send_feishu_message(token, content):
     """发送飞书消息触发下一个AI"""
     url = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id"
