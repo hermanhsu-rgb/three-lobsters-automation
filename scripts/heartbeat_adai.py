@@ -161,7 +161,7 @@ def get_current_signin_doc(token):
 
 
 def get_current_message_board(token):
-    """从签到文件夹找当前时间段的留言板（每6小时一个）"""
+    """从签到文件夹找当前时间段的签到留言板（签到+任务+交付统一）"""
     today = datetime.now().strftime('%Y-%m-%d')
     period_name, period_range, period_start = get_time_period()
     
@@ -173,18 +173,27 @@ def get_current_message_board(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                # 匹配：留言板 + 日期 + 时段开始时间（如-12）
-                if '留言板' in name and '签到' not in name:
-                    if today in name and f'-{period_start}' in name:
-                        print(f"[OK] 找到当前时段留言板: {name}")
+                # 匹配：签到留言板 + 日期 + 时段（如-12）
+                if '签到' in name and today in name:
+                    # 优先找带时段后缀的
+                    if f'-{period_start}' in name:
+                        print(f"[OK] 找到当前时段签到留言板: {name}")
                         return f.get('token')
             
-            # 没找到时段留言板，用默认留言板
-            print(f"[WARN] 未找到时段留言板，使用默认")
-            return MESSAGE_BOARD_ID  # 返回默认ID
+            # 没找到时段后缀，找当天无时段后缀的
+            for f in result.get('data', {}).get('files', []):
+                name = f.get('name', '')
+                if '签到' in name and today in name:
+                    # 排除带时段后缀的（如-12、-18）
+                    if not any(f'-{p}' in name for p in ['00', '06', '12', '18']):
+                        print(f"[OK] 找到当天签到留言板: {name}")
+                        return f.get('token')
+            
+            print(f"[WARN] 未找到签到留言板")
+            return None
     except Exception as e:
-        print(f"[ERROR] 查找留言板失败: {e}")
-        return MESSAGE_BOARD_ID  # 返回默认ID
+        print(f"[ERROR] 查找签到留言板失败: {e}")
+        return None
 
 
 def send_feishu_message(token, content):
