@@ -165,20 +165,33 @@ def send_feishu_message(token, content):
         return False
 
 
-def is_task_completed(message_board_content, task_id):
-    """检查任务是否已完成"""
-    lines = message_board_content.split('\n')
-    for line in lines:
-        # 查找完成标记：✅ T数字 完成
-        if '✅' in line and task_id in line and '完成' in line:
-            return True
-    return False
+def load_completed_tasks(who):
+    """加载已完成的任务ID列表"""
+    completed_file = os.path.expanduser(f'~/.hermes/logs/completed_tasks_{who}.json')
+    if os.path.exists(completed_file):
+        try:
+            with open(completed_file) as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+
+def save_completed_tasks(who, completed_set):
+    """保存已完成的任务ID列表"""
+    completed_file = os.path.expanduser(f'~/.hermes/logs/completed_tasks_{who}.json')
+    os.makedirs(os.path.dirname(completed_file), exist_ok=True)
+    with open(completed_file, 'w') as f:
+        json.dump(list(completed_set), f)
 
 
 def find_my_task(message_board_content, who):
     """从留言板找分配给自己的任务（排除已完成的）"""
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
+    
+    # 加载已完成任务
+    completed = load_completed_tasks(who)
     
     # 查找格式：T8: xxx → 🐂阿呆
     lines = message_board_content.split('\n')
@@ -191,13 +204,10 @@ def find_my_task(message_board_content, who):
                 parts = line.split('→')[0].strip()
                 if parts.startswith('T'):
                     task_id = parts.split(':')[0].strip()
-                    task_content = parts.split(':', 1)[1].strip() if ':' in parts else ''
-                    
-                    # 检查是否已完成
-                    if is_task_completed(message_board_content, task_id):
-                        print(f"[跳过] {task_id} 已完成，不重复执行")
+                    # 跳过已完成的任务
+                    if task_id in completed:
                         continue
-                    
+                    task_content = parts.split(':', 1)[1].strip() if ':' in parts else ''
                     return {'id': task_id, 'content': task_content, 'raw': line}
     return None
 
@@ -299,6 +309,12 @@ def heartbeat(who):
         # 4. spawn子agent执行任务
         print(f"[执行] 启动子agent...")
         spawn_agent_and_execute(who, task)
+        
+        # 记录任务已完成
+        completed = load_completed_tasks(who)
+        completed.add(task['id'])
+        save_completed_tasks(who, completed)
+        print(f"[记录] 任务 {task['id']} 已标记完成")
         
         # 5. 交任务（留言板）
         now = datetime.now().strftime('%H:%M')
