@@ -16,6 +16,9 @@ import urllib.request
 
 import subprocess
 
+# 导入记忆记录器
+from summary_logger import record_action
+
 # 从.env文件加载环境变量
 def load_env():
     """从.env文件加载环境变量"""
@@ -417,6 +420,7 @@ def heartbeat_pm(who):
     # 2. 签到
     if checkout_signin(token, who):
         print("[OK] 签到成功")
+        record_action('签到', '成功')
     
 # 3. 读留言板
     message_board_id = get_current_message_board(token)
@@ -485,6 +489,7 @@ def heartbeat_pm(who):
         task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
         append_to_doc(token, message_board_id, task_text)
         print(f"[发布] {next_task_id} 已分配给 {assignee_name}（轮流）")
+        record_action('发布任务', f"{next_task_id} → {assignee_name}")
         
         # 发消息触发执行者
         trigger_msg = f"🦬爱马仕 发布新任务：{next_task_id}，请 {assignee_emoji}{assignee_name} 执行"
@@ -501,14 +506,17 @@ def heartbeat_pm(who):
             assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
             assignee_name = WHO_NAME.get(next_executor, '未知')
             
-            # 简单任务模板
-            task_id = f"T{int(datetime.now().timestamp()) % 1000}"
+            # 从留言板提取已有任务号，取最大+1
+            existing_ids = re.findall(r'T(\d+)', message_board_content)
+            next_num = max([int(x) for x in existing_ids], default=0) + 1
+            task_id = f"T{next_num}"
             task_content = f"测试任务 {task_id}"
             
             now = datetime.now().strftime('%H:%M')
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
             print(f"[发布] {task_id} 已分配给 {assignee_name}（轮流）")
+            record_action('发布任务', f"{task_id} → {assignee_name}")
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
@@ -533,6 +541,7 @@ def heartbeat_pm(who):
                 task1_text = f"\n[{now}] 🦬爱马仕 发布任务\n{tasks[0][0]}: {tasks[0][1]} → {WHO_EMOJI[next_executor]}{WHO_NAME[next_executor]}\n"
                 append_to_doc(token, message_board_id, task1_text)
                 print(f"[发布] {tasks[0][0]} → {WHO_NAME[next_executor]}")
+                record_action('发布初始任务', f"{tasks[0][0]} → {WHO_NAME[next_executor]}")
                 
                 # T2 → 第二个执行者（轮流）
                 if len(tasks) >= 2:
@@ -540,6 +549,7 @@ def heartbeat_pm(who):
                     task2_text = f"{tasks[1][0]}: {tasks[1][1]} → {WHO_EMOJI[next_executor]}{WHO_NAME[next_executor]}\n"
                     append_to_doc(token, message_board_id, task2_text)
                     print(f"[发布] {tasks[1][0]} → {WHO_NAME[next_executor]}")
+                    record_action('发布初始任务', f"{tasks[1][0]} → {WHO_NAME[next_executor]}")
                 
                 # 发消息触发执行者
                 trigger_msg = f"🦬爱马仕 发布初始任务，请执行"

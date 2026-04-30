@@ -15,6 +15,9 @@ from datetime import datetime
 import urllib.request
 import subprocess
 
+# 导入记忆记录器
+from summary_logger import record_action
+
 # 从.env文件加载环境变量
 def load_env():
     """从.env文件加载环境变量"""
@@ -379,8 +382,10 @@ def heartbeat(who):
     # 2. 签到
     if checkout_signin(token, who):
         print("[OK] 签到成功")
+        record_action('签到', '成功')
     else:
         print("[WARN] 签到失败")
+        record_action('签到', '失败')
     
     # 3. 读留言板，找分配给自己的任务
     message_board_id = get_current_message_board(token)
@@ -393,6 +398,7 @@ def heartbeat(who):
     
     if task:
         print(f"\n[发现任务] {task['id']}: {task['content']}")
+        record_action('发现任务', f"{task['id']}: {task['content']}")
         
         # 4. spawn子agent执行任务
         print(f"[执行] 启动子agent...")
@@ -409,6 +415,7 @@ def heartbeat(who):
         deliver_text = f"\n[{now}] {WHO_EMOJI.get(who)} {WHO_NAME.get(who)}\n✅ {task['id']} 完成\n"
         append_to_doc(token, message_board_id, deliver_text)
         print(f"[交付] 已写入留言板")
+        record_action('完成任务', task['id'])
         
         # 6. 发消息触发爱马仕
         trigger_msg = f"{WHO_EMOJI.get(who)} {WHO_NAME.get(who)} 任务完成，请🦬爱马仕检查发布新任务"
