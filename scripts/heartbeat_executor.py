@@ -143,9 +143,19 @@ def append_to_doc(token, doc_id, content):
         return False
 
 
-def get_today_signin_doc(token):
-    """从签到文件夹找当天的签到文档"""
+def get_current_message_board(token):
+    """从签到文件夹找当前时段的留言板（标准格式：YYYY-MM-DD-HH）"""
     today = datetime.now().strftime('%Y-%m-%d')
+    hour = datetime.now().hour
+    if hour >= 18:
+        period_start = "18"
+    elif hour >= 12:
+        period_start = "12"
+    elif hour >= 6:
+        period_start = "06"
+    else:
+        period_start = "00"
+    
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
@@ -154,13 +164,15 @@ def get_today_signin_doc(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                if today in name:
-                    print(f"[OK] 找到今日签到文档: {name}")
+                # 严格匹配：签到留言板 + 日期 + 时段后缀（如-18）
+                if '签到留言板' in name and today in name and f'-{period_start}' in name:
+                    print(f"[OK] 找到当前时段留言板: {name}")
                     return f.get('token')
-            print(f"[WARN] 未找到今日({today})签到文档")
+            
+            print(f"[WARN] 未找到当前时段留言板")
             return None
     except Exception as e:
-        print(f"[ERROR] 查找签到文档失败: {e}")
+        print(f"[ERROR] 查找留言板失败: {e}")
         return None
 
 
@@ -285,18 +297,18 @@ def spawn_agent_and_execute(who, task):
 
 
 def checkout_signin(token, who):
-    """签到打卡"""
+    """签到打卡 - 写在留言板"""
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    signin_doc_id = get_today_signin_doc(token)
-    if not signin_doc_id:
-        print(f"[FAIL] 无法找到今日签到文档")
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print(f"[FAIL] 无法找到当前时段留言板")
         return False
     
     sign_text = f"{emoji} {name} 签到 | {now}"
-    append_to_doc(token, signin_doc_id, sign_text)
+    append_to_doc(token, message_board_id, sign_text)
     return True
 
 
@@ -322,7 +334,12 @@ def heartbeat(who):
         print("[WARN] 签到失败")
     
     # 3. 读留言板，找分配给自己的任务
-    message_board_content = read_doc(token, MESSAGE_BOARD_ID)
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print("[WARN] 无法找到当前时段留言板")
+        return False
+    
+    message_board_content = read_doc(token, message_board_id)
     task = find_my_task(message_board_content, who)
     
     if task:
@@ -341,7 +358,7 @@ def heartbeat(who):
         # 5. 交任务（留言板）
         now = datetime.now().strftime('%H:%M')
         deliver_text = f"\n[{now}] {WHO_EMOJI.get(who)} {WHO_NAME.get(who)}\n✅ {task['id']} 完成\n"
-        append_to_doc(token, MESSAGE_BOARD_ID, deliver_text)
+        append_to_doc(token, message_board_id, deliver_text)
         print(f"[交付] 已写入留言板")
         
         # 6. 发消息触发爱马仕
