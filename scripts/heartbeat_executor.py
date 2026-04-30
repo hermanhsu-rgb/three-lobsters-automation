@@ -212,8 +212,9 @@ def spawn_agent_and_execute(who, task):
     
     print(f"[spawn] 启动子agent执行: {task_id}: {content}")
     
-    # 导入Hermes AIAgent
-    sys.path.insert(0, '/root/.hermes/hermes-agent')
+    # 导入Hermes AIAgent - 动态路径，适配不同机器
+    hermes_agent_path = os.path.expanduser('~/.hermes/hermes-agent')
+    sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
     # 构造prompt
