@@ -462,7 +462,43 @@ def heartbeat_pm(who):
             # 清理结果文件
             os.remove(result_file)
     else:
-        print("[OK] 无新完成的任务")
+        # 检查是否有待执行任务
+        if has_pending_tasks(message_board_content):
+            print("[OK] 有待执行任务，等待完成")
+        else:
+            # 没有任务！发布初始任务
+            print("\n[发布] 留言板无任务，发布初始任务...")
+            
+            # 读项目任务分配表
+            project_content = read_doc(token, PROJECT_DOC_ID)
+            
+            # 提取任务列表（格式：T数字: 任务内容）
+            import re
+            tasks = re.findall(r'(T\d+):\s*(.+?)(?:\n|$)', project_content)
+            
+            if tasks:
+                # 发布前两个任务（轮流分配）
+                now = datetime.now().strftime('%H:%M')
+                
+                # T1 → 第一个执行者
+                next_executor = get_next_executor()
+                task1_text = f"\n[{now}] 🦬爱马仕 发布任务\n{tasks[0][0]}: {tasks[0][1]} → {WHO_EMOJI[next_executor]}{WHO_NAME[next_executor]}\n"
+                append_to_doc(token, message_board_id, task1_text)
+                print(f"[发布] {tasks[0][0]} → {WHO_NAME[next_executor]}")
+                
+                # T2 → 第二个执行者（轮流）
+                if len(tasks) >= 2:
+                    next_executor = get_next_executor()
+                    task2_text = f"{tasks[1][0]}: {tasks[1][1]} → {WHO_EMOJI[next_executor]}{WHO_NAME[next_executor]}\n"
+                    append_to_doc(token, message_board_id, task2_text)
+                    print(f"[发布] {tasks[1][0]} → {WHO_NAME[next_executor]}")
+                
+                # 发消息触发执行者
+                trigger_msg = f"🦬爱马仕 发布初始任务，请执行"
+                send_feishu_message(token, trigger_msg)
+                print(f"[触发] 已发消息触发执行者")
+            else:
+                print("[WARN] 项目任务分配表无任务定义")
     
     print(f"\n[完成] PM心跳结束 {datetime.now().strftime('%H:%M:%S')}")
     return True
