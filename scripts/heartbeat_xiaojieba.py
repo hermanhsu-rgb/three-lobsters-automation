@@ -382,7 +382,12 @@ def heartbeat(who):
         print("[WARN] 签到失败")
     
     # 3. 读留言板，找分配给自己的任务
-    message_board_content = read_doc(token, MESSAGE_BOARD_ID)
+    message_board_id = get_current_message_board(token)
+    if not message_board_id:
+        print("[WARN] 无法找到当前时段留言板")
+        return False
+    
+    message_board_content = read_doc(token, message_board_id)
     task = find_my_task(message_board_content, who)
     
     if task:
@@ -401,7 +406,7 @@ def heartbeat(who):
         # 5. 交任务（留言板）
         now = datetime.now().strftime('%H:%M')
         deliver_text = f"\n[{now}] {WHO_EMOJI.get(who)} {WHO_NAME.get(who)}\n✅ {task['id']} 完成\n"
-        append_to_doc(token, MESSAGE_BOARD_ID, deliver_text)
+        append_to_doc(token, message_board_id, deliver_text)
         print(f"[交付] 已写入留言板")
         
         # 6. 发消息触发爱马仕
