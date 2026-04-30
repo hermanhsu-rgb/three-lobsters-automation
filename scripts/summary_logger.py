@@ -48,11 +48,10 @@ def get_feishu_token():
 
 def find_today_doc(token, date_str):
     """查找当天的记事文档"""
-    url = f'https://open.feishu.cn/open-apis/drive/v1/files/{PROJECT_FOLDER_TOKEN}/children'
+    url = f'https://open.feishu.cn/open-apis/drive/v1/files?folder_token={PROJECT_FOLDER_TOKEN}&page_size=50'
     headers = {'Authorization': f'Bearer {token}'}
-    params = {'page_size': 50}
-    resp = requests.get(url, headers=headers, params=params, timeout=30)
-    files = resp.json().get('data', {}).get('items', [])
+    resp = requests.get(url, headers=headers, timeout=30)
+    files = resp.json().get('data', {}).get('files', [])
     
     # 匹配当天文档：执行摘要-YYYY-MM-DD
     doc_name = f'执行摘要-{date_str}'
