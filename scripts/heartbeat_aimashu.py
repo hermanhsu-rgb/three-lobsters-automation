@@ -111,9 +111,65 @@ def append_to_doc(token, doc_id, content):
         return False
 
 
-def get_today_signin_doc(token):
-    """从签到文件夹找当天的签到文档"""
+def get_time_period():
+    """获取当前时间段名称和范围"""
+    hour = datetime.now().hour
+    if 0 <= hour < 6:
+        return "凌晨", "00-06"
+    elif 6 <= hour < 12:
+        return "上午", "06-12"
+    elif 12 <= hour < 18:
+        return "下午", "12-18"
+    else:
+        return "晚上", "18-24"
+
+
+def create_signin_doc(token):
+    """创建新的签到文档（爱马仕专用）"""
     today = datetime.now().strftime('%Y-%m-%d')
+    period_name, period_range = get_time_period()
+    
+    title = f"📋 三小龙虾签到留言板 - {today} {period_name}"
+    
+    url = "https://open.feishu.cn/open-apis/docx/v1/documents"
+    data = json.dumps({"title": title}).encode('utf-8')
+    
+    req = urllib.request.Request(url, data=data, headers={
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }, method='POST')
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            if result.get('code') == 0:
+                doc_id = result['data']['document']['document_id']
+                print(f"[创建] 新签到文档: {title}")
+                
+                # 初始化内容
+                initial_content = f"""📋 三小龙虾签到留言板 - {today} {period_name}
+📅 时间段：{period_range}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 签到区域
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+                append_to_doc(token, doc_id, initial_content)
+                return doc_id
+            else:
+                print(f"[ERROR] 创建文档失败: {result.get('msg')}")
+                return None
+    except Exception as e:
+        print(f"[ERROR] 创建文档异常: {e}")
+        return None
+
+
+def get_or_create_signin_doc(token):
+    """查找当前时段签到文档，不存在则创建（爱马仕专用）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    period_name, period_range = get_time_period()
+    
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
@@ -122,8 +178,37 @@ def get_today_signin_doc(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                if today in name:
+                # 宽松匹配：包含今天日期 + (时间段 OR 无时间段后缀)
+                if today in name and (period_name in name or period_range in name or name.endswith(today) or name.endswith(today+')')):
+                    print(f"[OK] 找到当前时段签到文档: {name}")
                     return f.get('token')
+            
+            # 没找到，创建新的
+            print(f"[新建] 当前时段无签到文档，创建新文档...")
+            return create_signin_doc(token)
+    except Exception as e:
+        print(f"[ERROR] 查找签到文档失败: {e}")
+        return None
+
+
+def get_current_signin_doc(token):
+    """从签到文件夹找当前时间段的签到文档（每6小时一个）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    period_name, period_range = get_time_period()
+    
+    url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
+    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            for f in result.get('data', {}).get('files', []):
+                name = f.get('name', '')
+                # 宽松匹配：包含今天日期 + (时间段 OR 无时间段后缀)
+                if today in name and (period_name in name or period_range in name or name.endswith(today) or name.endswith(today+')')):
+                    print(f"[OK] 找到当前时段签到文档: {name}")
+                    return f.get('token')
+            print(f"[WARN] 未找到当前时段({today} {period_name})签到文档")
             return None
     except Exception as e:
         print(f"[ERROR] 查找签到文档失败: {e}")
@@ -261,7 +346,7 @@ def checkout_signin(token, who):
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    signin_doc_id = get_today_signin_doc(token)
+    signin_doc_id = get_or_create_signin_doc(token)
     if not signin_doc_id:
         return False
     
@@ -335,4 +420,4 @@ if __name__ == '__main__':
         print("[ERROR] 未设置 FEISHU_APP_SECRET 环境变量")
         sys.exit(1)
     
-    heartbeat("aimashu")
+    heartbeat_pm("aimashu")

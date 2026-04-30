@@ -120,9 +120,24 @@ def append_to_doc(token, doc_id, content):
         return False
 
 
-def get_today_signin_doc(token):
-    """从签到文件夹找当天的签到文档"""
+def get_time_period():
+    """获取当前时间段名称和范围"""
+    hour = datetime.now().hour
+    if 0 <= hour < 6:
+        return "凌晨", "00-06"
+    elif 6 <= hour < 12:
+        return "上午", "06-12"
+    elif 12 <= hour < 18:
+        return "下午", "12-18"
+    else:
+        return "晚上", "18-24"
+
+
+def get_current_signin_doc(token):
+    """从签到文件夹找当前时间段的签到文档（每6小时一个）"""
     today = datetime.now().strftime('%Y-%m-%d')
+    period_name, period_range = get_time_period()
+    
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
     
@@ -131,10 +146,12 @@ def get_today_signin_doc(token):
             result = json.loads(resp.read().decode('utf-8'))
             for f in result.get('data', {}).get('files', []):
                 name = f.get('name', '')
-                if today in name:
-                    print(f"[OK] 找到今日签到文档: {name}")
+                # 匹配：日期 + 时间段（如"凌晨"或"00-06"）
+                # 宽松匹配：包含今天日期 + (时间段 OR 无时间段后缀)
+                if today in name and (period_name in name or period_range in name or name.endswith(today) or name.endswith(today+')')):
+                    print(f"[OK] 找到当前时段签到文档: {name}")
                     return f.get('token')
-            print(f"[WARN] 未找到今日({today})签到文档")
+            print(f"[WARN] 未找到当前时段({today} {period_name})签到文档")
             return None
     except Exception as e:
         print(f"[ERROR] 查找签到文档失败: {e}")
@@ -267,7 +284,7 @@ def checkout_signin(token, who):
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
-    signin_doc_id = get_today_signin_doc(token)
+    signin_doc_id = get_current_signin_doc(token)
     if not signin_doc_id:
         print(f"[FAIL] 无法找到今日签到文档")
         return False
