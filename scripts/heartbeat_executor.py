@@ -79,7 +79,7 @@ def get_token():
 
 
 def read_doc(token, doc_id):
-    """读取文档内容"""
+    """读取文档最近内容（读到末尾，取最后30行）"""
     url = f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children?page_size=100"
     req = urllib.request.Request(url, headers={
         'Authorization': f'Bearer {token}'
@@ -88,8 +88,30 @@ def read_doc(token, doc_id):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode('utf-8'))
+            
+            # 读取所有页，直到末尾
+            all_items = result.get('data', {}).get('items', [])
+            page_token = result.get('data', {}).get('page_token')
+            
+            # 继续读取到末尾（最多20页，避免太慢）
+            page_count = 1
+            while page_token and page_count < 20:
+                url2 = f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children?page_size=100&page_token={page_token}"
+                req2 = urllib.request.Request(url2, headers={'Authorization': f'Bearer {token}'})
+                with urllib.request.urlopen(req2, timeout=30) as resp2:
+                    result2 = json.loads(resp2.read().decode('utf-8'))
+                    items2 = result2.get('data', {}).get('items', [])
+                    all_items.extend(items2)
+                    page_count += 1
+                    if not result2.get('data', {}).get('has_more'):
+                        break
+                    page_token = result2.get('data', {}).get('page_token')
+            
+            # 只取最后30个block（任务和最近签到都在末尾）
+            items = all_items[-30:]
+            
             texts = []
-            for item in result.get('data', {}).get('items', []):
+            for item in items:
                 if 'text' in item and 'elements' in item['text']:
                     for elem in item['text']['elements']:
                         if 'text_run' in elem and 'content' in elem['text_run']:
