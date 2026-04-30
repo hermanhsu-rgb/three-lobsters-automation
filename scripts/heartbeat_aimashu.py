@@ -417,7 +417,7 @@ def heartbeat_pm(who):
     if checkout_signin(token, who):
         print("[OK] 签到成功")
     
-    # 3. 读留言板
+# 3. 读留言板
     message_board_id = get_current_message_board(token)
     if not message_board_id:
         print("[WARN] 无法找到当前时段留言板")
@@ -425,18 +425,75 @@ def heartbeat_pm(who):
     
     message_board_content = read_doc(token, message_board_id)
     
-    # 4. 检查待执行任务数量
-    pending_tasks = 0
+    # 4. 提取已完成任务ID
+    import re
+    completed_tasks = set()
     for line in message_board_content.split('\n'):
-        if line.strip().startswith('T') and '→' in line and '完成' not in line:
-            pending_tasks += 1
+        match = re.search(r'✅\s*(T\d+)\s*完成', line)
+        if match:
+            completed_tasks.add(match.group(1))
     
-    print(f"[状态] 当前待执行任务: {pending_tasks} 个")
+    # 5. 提取所有任务（T开头且包含→）
+    all_tasks = []
+    for line in message_board_content.split('\n'):
+        match = re.match(r'(T\d+):\s*.+?→', line)
+        if match:
+            all_tasks.append(match.group(1))
     
-    # 5. 如果待执行任务 < 2，主动发布新任务
-    if pending_tasks < 2:
+    # 6. 计算待执行任务数量（未完成的）
+    pending_tasks = [t for t in all_tasks if t not in completed_tasks]
+    pending_count = len(pending_tasks)
+    
+    print(f"[状态] 总任务: {len(all_tasks)} 个, 已完成: {len(completed_tasks)} 个, 待执行: {pending_count} 个")
+    
+    # 7. 检查有没有人交任务
+    completions = check_task_completion(message_board_content)
+    
+    if completions:
+        print(f"\n[发现交付] {len(completions)} 个任务完成")
+        for c in completions:
+            print(f"  - {c['who']} {c['task']}")
+        
+        # 有人完成任务，发布下一个任务
+        print(f"\n[发布] 有人完成任务，发布新任务")
+        
+        # 从项目任务分配表读任务
+        project_content = read_doc(token, PROJECT_DOC_ID)
+        tasks = re.findall(r'(T\d+):\s*(.+?)(?:\n|$)', project_content)
+        
+        # 找到未发布过的任务
+        next_task_num = len(all_tasks) + 1
+        next_task_id = f"T{next_task_num}"
+        
+        # 如果任务分配表有定义，用分配表的
+        for t_id, t_content in tasks:
+            if t_id not in all_tasks:
+                next_task_id = t_id
+                task_content = t_content
+                break
+        else:
+            # 否则用简单模板
+            task_content = f"测试任务 {next_task_id}"
+        
+        # 轮流分配
+        next_executor = get_next_executor()
+        assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
+        assignee_name = WHO_NAME.get(next_executor, '未知')
+        
+        now = datetime.now().strftime('%H:%M')
+        task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
+        append_to_doc(token, message_board_id, task_text)
+        print(f"[发布] {next_task_id} 已分配给 {assignee_name}（轮流）")
+        
+        # 发消息触发执行者
+        trigger_msg = f"🦬爱马仕 发布新任务：{next_task_id}，请 {assignee_emoji}{assignee_name} 执行"
+        send_feishu_message(token, trigger_msg)
+        print(f"[触发] 已发消息触发执行者")
+    
+    # 8. 如果待执行任务 < 2，主动发布新任务填补
+    elif pending_count < 2:
         print(f"\n[发布] 待执行任务不足，主动发布新任务")
-        tasks_to_publish = 2 - pending_tasks
+        tasks_to_publish = 2 - pending_count
         
         for i in range(tasks_to_publish):
             next_executor = get_next_executor()
@@ -451,45 +508,6 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
             print(f"[发布] {task_id} 已分配给 {assignee_name}（轮流）")
-    
-    # 6. 检查有没有人交任务
-    completions = check_task_completion(message_board_content)
-    
-    if completions:
-        print(f"\n[发现交付] {len(completions)} 个任务完成")
-        for c in completions:
-            print(f"  - {c['who']} {c['task']}")
-        
-        # 4. spawn PM思考子agent
-        print(f"\n[思考] 启动PM子agent...")
-        thinking_file = spawn_pm_thinking_agent(token, completions)
-        
-        # 5. 读取思考结果（如果子agent已完成）
-        result_file = os.path.expanduser("~/.hermes/shared/pm_result.json")
-        if os.path.exists(result_file):
-            with open(result_file) as f:
-                result = json.load(f)
-            
-            # 6. 发布新任务到留言板（轮流分配）
-            next_task = result.get('next_task')
-            if next_task:
-                # 轮流分配
-                next_executor = get_next_executor()
-                assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
-                assignee_name = WHO_NAME.get(next_executor, '未知')
-                
-                now = datetime.now().strftime('%H:%M')
-                task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task['id']}: {next_task['content']} → {assignee_emoji}{assignee_name}\n"
-                append_to_doc(token, message_board_id, task_text)
-                print(f"[发布] {next_task['id']} 已分配给 {assignee_name}（轮流）")
-                
-                # 7. 发消息触发执行者
-                trigger_msg = f"🦬爱马仕 发布新任务：{next_task['id']}，请 {assignee_emoji}{assignee_name} 执行"
-                send_feishu_message(token, trigger_msg)
-                print(f"[触发] 已发消息触发执行者")
-            
-            # 清理结果文件
-            os.remove(result_file)
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
