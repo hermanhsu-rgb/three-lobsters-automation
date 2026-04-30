@@ -46,7 +46,7 @@ def create_signin_board():
     
     today = datetime.now().strftime('%Y-%m-%d')
     period_start = get_time_period()
-    doc_name = f'📋 三小龙虾签到留言板 - {today}-{period_start}'
+    doc_name = f'签到留言板 - {today}-{period_start}'
     
     # 创建文档
     print(f"[创建] {doc_name}")
