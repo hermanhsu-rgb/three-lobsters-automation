@@ -155,27 +155,51 @@ def send_feishu_message(token, content):
 
 
 def check_task_completion(message_board_content):
-    """检查有没有人交任务"""
+    """检查有没有人交任务 - 跨行检测"""
     completions = []
     lines = message_board_content.split('\n')
     
+    # 找所有完成行：✅ T数字 完成
     for i, line in enumerate(lines):
-        # 查找完成标记：✅ T数字 完成
         if '✅' in line and '完成' in line:
-            # 提取任务ID和完成者
-            for emoji in ['🐂', '🦜', '🦬']:
-                if emoji in line:
-                    parts = line.split('✅')
-                    if len(parts) > 1:
-                        task_info = parts[1].strip()
-                        completions.append({
-                            'who': emoji,
-                            'task': task_info,
-                            'line': line
-                        })
-                    break
+            # 提取任务ID
+            parts = line.split('✅')
+            if len(parts) > 1:
+                task_info = parts[1].strip()  # 如 "T1 完成"
+                task_id = task_info.split()[0] if task_info else '?'
+                
+                # 向上查找完成者（可能在前一行）
+                who = '未知'
+                for emoji in ['🐂', '🦜', '🦬']:
+                    # 检查当前行
+                    if emoji in line:
+                        who = emoji
+                        break
+                    # 检查前一行
+                    if i > 0 and emoji in lines[i-1]:
+                        who = emoji
+                        break
+                
+                completions.append({
+                    'who': who,
+                    'task': task_id,
+                    'line': line
+                })
     
     return completions
+
+
+def has_pending_tasks(message_board_content):
+    """检查是否有待执行任务（未完成的任务）"""
+    lines = message_board_content.split('\n')
+    for line in lines:
+        # 任务格式：T数字: 内容 → 某人
+        if line.strip().startswith('T') and ':' in line and '→' in line:
+            # 检查这行后面有没有对应的完成标记
+            # 如果这行包含完成标记，说明已完成
+            if '✅' not in line and '完成' not in line:
+                return True
+    return False
 
 
 def spawn_pm_thinking_agent(token, completions):

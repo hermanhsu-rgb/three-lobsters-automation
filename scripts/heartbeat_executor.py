@@ -165,8 +165,18 @@ def send_feishu_message(token, content):
         return False
 
 
+def is_task_completed(message_board_content, task_id):
+    """检查任务是否已完成"""
+    lines = message_board_content.split('\n')
+    for line in lines:
+        # 查找完成标记：✅ T数字 完成
+        if '✅' in line and task_id in line and '完成' in line:
+            return True
+    return False
+
+
 def find_my_task(message_board_content, who):
-    """从留言板找分配给自己的任务"""
+    """从留言板找分配给自己的任务（排除已完成的）"""
     emoji = WHO_EMOJI.get(who, '❓')
     name = WHO_NAME.get(who, '未知')
     
@@ -182,6 +192,12 @@ def find_my_task(message_board_content, who):
                 if parts.startswith('T'):
                     task_id = parts.split(':')[0].strip()
                     task_content = parts.split(':', 1)[1].strip() if ':' in parts else ''
+                    
+                    # 检查是否已完成
+                    if is_task_completed(message_board_content, task_id):
+                        print(f"[跳过] {task_id} 已完成，不重复执行")
+                        continue
+                    
                     return {'id': task_id, 'content': task_content, 'raw': line}
     return None
 
