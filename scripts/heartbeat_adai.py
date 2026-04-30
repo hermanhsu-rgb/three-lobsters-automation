@@ -121,22 +121,22 @@ def append_to_doc(token, doc_id, content):
 
 
 def get_time_period():
-    """获取当前时间段名称和范围"""
+    """获取当前时间段名称、范围和开始时间"""
     hour = datetime.now().hour
     if 0 <= hour < 6:
-        return "凌晨", "00-06"
+        return "凌晨", "00-06", "00"
     elif 6 <= hour < 12:
-        return "上午", "06-12"
+        return "上午", "06-12", "06"
     elif 12 <= hour < 18:
-        return "下午", "12-18"
+        return "下午", "12-18", "12"
     else:
-        return "晚上", "18-24"
+        return "晚上", "18-24", "18"
 
 
 def get_current_signin_doc(token):
     """从签到文件夹找当前时间段的签到文档（每6小时一个）"""
     today = datetime.now().strftime('%Y-%m-%d')
-    period_name, period_range = get_time_period()
+    period_name, period_range, _ = get_time_period()
     
     url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
@@ -149,13 +149,42 @@ def get_current_signin_doc(token):
                 # 匹配：日期 + 时间段（如"凌晨"或"00-06"）
                 # 宽松匹配：包含今天日期 + (时间段 OR 无时间段后缀)
                 if today in name and (period_name in name or period_range in name or name.endswith(today) or name.endswith(today+')')):
-                    print(f"[OK] 找到当前时段签到文档: {name}")
-                    return f.get('token')
+                    # 排除留言板（只找签到板）
+                    if '留言板' not in name or '签到' in name:
+                        print(f"[OK] 找到当前时段签到文档: {name}")
+                        return f.get('token')
             print(f"[WARN] 未找到当前时段({today} {period_name})签到文档")
             return None
     except Exception as e:
         print(f"[ERROR] 查找签到文档失败: {e}")
         return None
+
+
+def get_current_message_board(token):
+    """从签到文件夹找当前时间段的留言板（每6小时一个）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    period_name, period_range, period_start = get_time_period()
+    
+    url = f"https://open.feishu.cn/open-apis/drive/v1/files?folder_token={SIGNIN_FOLDER_ID}&page_size=50"
+    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+            for f in result.get('data', {}).get('files', []):
+                name = f.get('name', '')
+                # 匹配：留言板 + 日期 + 时段开始时间（如-12）
+                if '留言板' in name and '签到' not in name:
+                    if today in name and f'-{period_start}' in name:
+                        print(f"[OK] 找到当前时段留言板: {name}")
+                        return f.get('token')
+            
+            # 没找到时段留言板，用默认留言板
+            print(f"[WARN] 未找到时段留言板，使用默认")
+            return MESSAGE_BOARD_ID  # 返回默认ID
+    except Exception as e:
+        print(f"[ERROR] 查找留言板失败: {e}")
+        return MESSAGE_BOARD_ID  # 返回默认ID
 
 
 def send_feishu_message(token, content):
@@ -228,17 +257,14 @@ def find_my_task(message_board_content, who):
     return None
 
 
-def spawn_agent_and_execute(who, task):
-    """真正spawn子agent执行任务 - 使用Hermes AIAgent"""
-    emoji = WHO_EMOJI.get(who, '❓')
-    name = WHO_NAME.get(who, '未知')
+def spawn_agent_and_execute(who, task, message_board_id):
+    """Spawn子agent执行任务"""
+    task_id = task['id']
+    content = task['content']
+    emoji = WHO_EMOJI.get(who, '🤖')
+    name = WHO_NAME.get(who, who)
     
-    content = task.get('content', '')
-    task_id = task.get('id', '?')
-    
-    print(f"[spawn] 启动子agent执行: {task_id}: {content}")
-    
-# 导入Hermes AIAgent - 动态路径，适配不同机器
+    # 导入Hermes AIAgent - 动态路径，适配不同机器
     hermes_agent_path = os.path.expanduser('~/.hermes/hermes-agent')
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
@@ -249,7 +275,7 @@ def spawn_agent_and_execute(who, task):
 任务内容: {content}
 
 要求：
-1. 使用feishu-doc技能完成任务（修改留言板文档：{MESSAGE_BOARD_ID})
+1. 使用feishu-doc技能完成任务（修改留言板文档：{message_board_id})
 2. 在留言板写入：✅ {task_id}完成
 3. 不要解释，直接执行并返回结果
 """
@@ -316,7 +342,8 @@ def heartbeat(who):
         print("[WARN] 签到失败")
     
     # 3. 读留言板，找分配给自己的任务
-    message_board_content = read_doc(token, MESSAGE_BOARD_ID)
+    message_board_id = get_current_message_board(token)
+    message_board_content = read_doc(token, message_board_id)
     task = find_my_task(message_board_content, who)
     
     if task:
@@ -324,7 +351,7 @@ def heartbeat(who):
         
         # 4. spawn子agent执行任务
         print(f"[执行] 启动子agent...")
-        spawn_agent_and_execute(who, task)
+        spawn_agent_and_execute(who, task, message_board_id)
         
         # 记录任务已完成
         completed = load_completed_tasks(who)
@@ -335,7 +362,7 @@ def heartbeat(who):
         # 5. 交任务（留言板）
         now = datetime.now().strftime('%H:%M')
         deliver_text = f"\n[{now}] {WHO_EMOJI.get(who)} {WHO_NAME.get(who)}\n✅ {task['id']} 完成\n"
-        append_to_doc(token, MESSAGE_BOARD_ID, deliver_text)
+        append_to_doc(token, message_board_id, deliver_text)
         print(f"[交付] 已写入留言板")
         
         # 6. 发消息触发爱马仕
