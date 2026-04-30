@@ -417,13 +417,42 @@ def heartbeat_pm(who):
     if checkout_signin(token, who):
         print("[OK] 签到成功")
     
-    # 3. 读留言板，检查有没有人交任务
+    # 3. 读留言板
     message_board_id = get_current_message_board(token)
     if not message_board_id:
         print("[WARN] 无法找到当前时段留言板")
         return False
     
     message_board_content = read_doc(token, message_board_id)
+    
+    # 4. 检查待执行任务数量
+    pending_tasks = 0
+    for line in message_board_content.split('\n'):
+        if line.strip().startswith('T') and '→' in line and '完成' not in line:
+            pending_tasks += 1
+    
+    print(f"[状态] 当前待执行任务: {pending_tasks} 个")
+    
+    # 5. 如果待执行任务 < 2，主动发布新任务
+    if pending_tasks < 2:
+        print(f"\n[发布] 待执行任务不足，主动发布新任务")
+        tasks_to_publish = 2 - pending_tasks
+        
+        for i in range(tasks_to_publish):
+            next_executor = get_next_executor()
+            assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
+            assignee_name = WHO_NAME.get(next_executor, '未知')
+            
+            # 简单任务模板
+            task_id = f"T{int(datetime.now().timestamp()) % 1000}"
+            task_content = f"测试任务 {task_id}"
+            
+            now = datetime.now().strftime('%H:%M')
+            task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
+            append_to_doc(token, message_board_id, task_text)
+            print(f"[发布] {task_id} 已分配给 {assignee_name}（轮流）")
+    
+    # 6. 检查有没有人交任务
     completions = check_task_completion(message_board_content)
     
     if completions:
