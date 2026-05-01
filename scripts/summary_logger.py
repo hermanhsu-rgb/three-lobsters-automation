@@ -155,20 +155,29 @@ def generate_summary(messages):
     
     # 提取有意义的消息内容
     key_topics = []
+    keywords = ['任务', '完成', '问题', '配置', '测试', '安装', '修复', '改', '写', 'push', 'git', '脚本', '技能', '权限', '图片']
+    
     for m in messages:
         text = m['text'].strip()
-        # 过滤空消息、太短消息、机器人富文本、简单问候
+        # 过滤空消息、太短消息、机器人富文本
         if len(text) < 10 or text.startswith('{'):
             continue
-        if text.lower() in ['hi', 'ok', '好', '嗯', '收到', '好的']:
+        
+        # 简单问候过滤
+        simple_greetings = ['hi', 'ok', '好', '嗯', '收到', '好的', '好了', '好难搞', '现在好了']
+        if text.lower() in simple_greetings:
             continue
         
-        # 提取关键词（任务、问题、完成等）
-        keywords = ['任务', '完成', '问题', '配置', '测试', '安装', '修复', '改', '写', 'push', 'git', '脚本']
+        # 优先提取含关键词的
+        is_key = False
         for kw in keywords:
             if kw in text.lower():
-                key_topics.append(text[:50])
+                is_key = True
                 break
+        
+        # 关键词匹配 或 长度>15的消息
+        if is_key or len(text) > 15:
+            key_topics.append(text[:60])
     
     if not key_topics:
         return None
@@ -178,8 +187,8 @@ def generate_summary(messages):
     emoji = {'adai': '🐂', 'xiaojieba': '🦞', 'aimashu': '🦬'}.get(WHO_AM_I, '')
     my_name = NAME_MAP.get(WHO_AM_I, WHO_AM_I)
     
-    # 只取前3个关键主题
-    topics = key_topics[:3]
+    # 只取前5个关键主题
+    topics = key_topics[:5]
     summary = f"{emoji} {my_name} | {now} | " + " | ".join(topics)
     
     return summary
