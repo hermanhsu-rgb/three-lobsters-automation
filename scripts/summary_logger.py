@@ -23,10 +23,13 @@ FEISHU_APP_ID = os.environ.get('FEISHU_APP_ID')
 FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET')
 
 # 文件夹Token（三小龙虾自动化项目）
-PROJECT_FOLDER_TOKEN = 'P9Q1fSCyrlS0lqd8Y9Tcfbncnl9'
+PROJECT_FOLDER_TOKEN='P9Q1fSCyrlS0lqd8Y9Tcfbncnl9'
 
 # 本地执行记录
 SUMMARY_LOG = os.path.expanduser(f'~/.hermes/logs/summary_{WHO_AM_I}.json')
+
+# 项目进展记录文档（固定版本）
+PROJECT_PROGRESS_DOC_FIXED = 'RbRNdPRd7oWRfYxop2wcrdXMnOV'
 
 # 名字映射
 NAME_MAP = {
@@ -45,6 +48,35 @@ def get_feishu_token():
         'app_secret': FEISHU_APP_SECRET
     }, timeout=30)
     return resp.json().get('tenant_access_token')
+
+
+def find_latest_progress_doc(token):
+    """找最新的项目进展记录文档（爱马仕每天创建新版）"""
+    url = f'https://open.feishu.cn/open-apis/drive/v1/files?folder_token={PROJECT_FOLDER_TOKEN}&page_size=50'
+    headers = {'Authorization': f'Bearer {token}'}
+    resp = requests.get(url, headers=headers, timeout=30)
+    files = resp.json().get('data', {}).get('files', [])
+    
+    # 找所有项目进展记录文档
+    progress_docs = []
+    for f in files:
+        name = f.get('name', '')
+        # 匹配：项目进展记录 或 项目进展记录 (日期)
+        if '项目进展记录' in name:
+            progress_docs.append({
+                'token': f.get('token'),
+                'name': name,
+                'modified_time': int(f.get('modified_time', 0))
+            })
+    
+    if not progress_docs:
+        return None, None
+    
+    # 按修改时间排序，返回最新的
+    progress_docs.sort(key=lambda x: x['modified_time'], reverse=True)
+    latest = progress_docs[0]
+    print(f"[OK] 找到最新项目进展记录: {latest['name']}")
+    return latest['token'], latest['name']
 
 
 def find_today_doc(token, date_str):
@@ -169,23 +201,17 @@ def record_action(action, detail='', who=None):
 
 # ============ 主循环 ============
 def main():
-    """主函数：将本地未同步的记录同步到飞书文档"""
+    """主函数：将本地未同步的记录同步到飞书项目进展记录"""
     token = get_feishu_token()
     if not token:
         print('[错误] 获取token失败')
         return
     
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    
-    # 查找或创建当天文档
-    doc_id, doc_name = find_today_doc(token, date_str)
+    # 找最新的项目进展记录文档（爱马仕每天创建新版）
+    doc_id, doc_name = find_latest_progress_doc(token)
     if not doc_id:
-        doc_id, doc_name = create_today_doc(token, date_str)
-        if doc_id:
-            print(f'[OK] 创建新文档: {doc_name}')
-        else:
-            print('[错误] 创建文档失败')
-            return
+        print('[错误] 找不到项目进展记录文档')
+        return
     
     # 读取本地记录
     data = load_local_summary()

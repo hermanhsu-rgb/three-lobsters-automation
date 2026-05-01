@@ -49,6 +49,7 @@ SIGNIN_FOLDER_ID = os.environ.get('SIGNIN_FOLDER_ID', 'TUcWf6Kyql4d6gdi1nWc7TxVn
 MESSAGE_BOARD_ID = os.environ.get('MESSAGE_BOARD_ID', 'Lj0OdVYvuoAKvVxOxr0crc9ynWg')
 TASK_BOARD_ID = os.environ.get('TASK_BOARD_ID', 'EFcudwbCCozKaQx2peocy7NIn5b')
 FEISHU_GROUP_ID = os.environ.get('FEISHU_GROUP_ID', 'oc_6e680216125c663a3359e07cb6831fe7')
+PROJECT_PROGRESS_DOC = os.environ.get('PROJECT_PROGRESS_DOC', 'RbRNdPRd7oWRfYxop2wcrdXMnOV')  # 项目进展记录
 
 # 身份映射
 WHO_EMOJI = {
@@ -420,6 +421,14 @@ def heartbeat(who):
         print(f"[触发] 已发消息触发爱马仕")
     else:
         print("[OK] 无分配给自己的任务")
+    
+    # 7. 记录项目进展
+    now = datetime.now().strftime('%Y-%m-%d %H:%M')
+    progress_text = f"\n🐂 阿呆 心跳 | {now}"
+    if task:
+        progress_text += f" | 执行: {task['id']}"
+    append_to_doc(token, PROJECT_PROGRESS_DOC, progress_text)
+    print(f"[进展] 已写入项目进展记录")
     
     print(f"\n[完成] 心跳结束 {datetime.now().strftime('%H:%M:%S')}")
     return True
