@@ -1,35 +1,25 @@
 #!/usr/bin/env python3
 """
-执行摘要记录器 - 三小龙虾通用
-版本: V1.0 (2026-05-01)
-每10分钟记录自己的执行摘要到当天的记事文档
-
-使用方式:
-1. 在其他脚本中导入: from summary_logger import record_action
-2. 执行动作时调用: record_action('签到', '成功')
-3. cron每10分钟运行本脚本，自动同步到飞书
+项目进展摘要记录器
+每30分钟汇总群消息，写入项目进展记录
 """
 
 import os
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ============ 配置 ============
-WHO_AM_I = os.environ.get('WHO_AM_I', 'adai')  # adai / xiaojieba / aimashu
+WHO_AM_I = os.environ.get('WHO_AM_I', 'adai')
 
-# 飞书配置
 FEISHU_APP_ID = os.environ.get('FEISHU_APP_ID')
 FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET')
 
-# 文件夹Token（三小龙虾自动化项目）
-PROJECT_FOLDER_TOKEN='P9Q1fSCyrlS0lqd8Y9Tcfbncnl9'
+PROJECT_FOLDER_TOKEN = 'P9Q1fSCyrlS0lqd8Y9Tcfbncnl9'
+CHAT_ID = 'oc_6e680216125c663a3359e07cb6831fe7'  # 助力群
 
-# 本地执行记录
-SUMMARY_LOG = os.path.expanduser(f'~/.hermes/logs/summary_{WHO_AM_I}.json')
-
-# 项目进展记录文档（固定版本）
-PROJECT_PROGRESS_DOC_FIXED = 'RbRNdPRd7oWRfYxop2wcrdXMnOV'
+# 已处理消息记录
+PROCESSED_LOG = os.path.expanduser(f'~/.hermes/logs/processed_messages.json')
 
 # 名字映射
 NAME_MAP = {
@@ -50,73 +40,74 @@ def get_feishu_token():
     return resp.json().get('tenant_access_token')
 
 
+def get_group_messages(token, limit=50):
+    """获取群消息"""
+    url = f'https://open.feishu.cn/open-apis/im/v1/messages?page_size={limit}&container_id_type=chat&container_id={CHAT_ID}'
+    headers = {'Authorization': f'Bearer {token}'}
+    resp = requests.get(url, headers=headers, timeout=30)
+    result = resp.json()
+    
+    if result.get('code') != 0:
+        return []
+    
+    messages = []
+    items = result.get('data', {}).get('items', [])
+    
+    for msg in items:
+        create_time = int(msg.get('create_time', 0)) / 1000
+        msg_id = msg.get('message_id', '')
+        sender_id = msg.get('sender', {}).get('id', '')
+        msg_type = msg.get('msg_type', '')
+        body = msg.get('body', {}).get('content', '')
+        
+        # 解析消息内容
+        try:
+            content_obj = json.loads(body)
+            text = content_obj.get('text', body)
+        except:
+            text = body
+        
+        messages.append({
+            'msg_id': msg_id,
+            'time': create_time,
+            'sender': sender_id,
+            'type': msg_type,
+            'text': text[:200]  # 截断
+        })
+    
+    return messages
+
+
 def find_latest_progress_doc(token):
-    """找最新的项目进展记录文档（优先选带今天日期的）"""
+    """找最新的项目进展记录文档"""
     url = f'https://open.feishu.cn/open-apis/drive/v1/files?folder_token={PROJECT_FOLDER_TOKEN}&page_size=50'
     headers = {'Authorization': f'Bearer {token}'}
     resp = requests.get(url, headers=headers, timeout=30)
     files = resp.json().get('data', {}).get('files', [])
     
-    # 找所有项目进展记录文档
-    progress_docs = []
     today = datetime.now().strftime('%Y-%m-%d')
     
     for f in files:
         name = f.get('name', '')
-        # 匹配：项目进展记录 或 项目进展记录 (日期)
+        if '项目进展记录' in name and today in name:
+            return f.get('token'), name
+    
+    # 没找到今天的，找最新的
+    progress_docs = []
+    for f in files:
+        name = f.get('name', '')
         if '项目进展记录' in name:
             progress_docs.append({
                 'token': f.get('token'),
                 'name': name,
-                'modified_time': int(f.get('modified_time', 0)),
-                'has_today': today in name  # 标记是否包含今天日期
+                'modified_time': int(f.get('modified_time', 0))
             })
     
-    if not progress_docs:
-        return None, None
+    if progress_docs:
+        progress_docs.sort(key=lambda x: x['modified_time'], reverse=True)
+        return progress_docs[0]['token'], progress_docs[0]['name']
     
-    # 优先选带今天日期的，否则选最新的
-    today_docs = [d for d in progress_docs if d['has_today']]
-    if today_docs:
-        latest = today_docs[0]
-        print(f"[OK] 找到今天的项目进展记录: {latest['name']}")
-        return latest['token'], latest['name']
-    
-    # 按修改时间排序，返回最新的
-    progress_docs.sort(key=lambda x: x['modified_time'], reverse=True)
-    latest = progress_docs[0]
-    print(f"[OK] 找到最新项目进展记录: {latest['name']}")
-    return latest['token'], latest['name']
-
-
-def find_today_doc(token, date_str):
-    """查找当天的记事文档"""
-    url = f'https://open.feishu.cn/open-apis/drive/v1/files?folder_token={PROJECT_FOLDER_TOKEN}&page_size=50'
-    headers = {'Authorization': f'Bearer {token}'}
-    resp = requests.get(url, headers=headers, timeout=30)
-    files = resp.json().get('data', {}).get('files', [])
-    
-    # 匹配当天文档：执行摘要-YYYY-MM-DD
-    doc_name = f'执行摘要-{date_str}'
-    for f in files:
-        if doc_name in f.get('name', ''):
-            return f.get('token'), f.get('name')
     return None, None
-
-
-def create_today_doc(token, date_str):
-    """创建当天的记事文档"""
-    url = 'https://open.feishu.cn/open-apis/docx/v1/documents'
-    headers = {'Authorization': f'Bearer {token}'}
-    doc_name = f'执行摘要-{date_str}'
-    resp = requests.post(url, headers=headers, json={
-        'document': {
-            'title': doc_name,
-            'folder_id': PROJECT_FOLDER_TOKEN
-        }
-    }, timeout=30)
-    result = resp.json()
-    return result.get('data', {}).get('document', {}).get('document_id'), doc_name
 
 
 def append_to_doc(token, doc_id, content):
@@ -129,7 +120,7 @@ def append_to_doc(token, doc_id, content):
     resp = requests.post(url, headers=headers, json={
         'children': [
             {
-                'block_type': 2,  # Text block
+                'block_type': 2,
                 'text': {
                     'elements': [{'text_run': {'content': content}}]
                 }
@@ -139,122 +130,116 @@ def append_to_doc(token, doc_id, content):
     return resp.status_code == 200
 
 
-# ============ 执行记录 ============
-def load_local_summary():
-    """加载本地执行摘要"""
-    if os.path.exists(SUMMARY_LOG):
-        with open(SUMMARY_LOG, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {'last_time': '', 'records': []}
+def load_processed_messages():
+    """加载已处理的消息ID"""
+    if os.path.exists(PROCESSED_LOG):
+        try:
+            with open(PROCESSED_LOG, 'r') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
 
 
-def save_local_summary(data):
-    """保存本地执行摘要"""
-    os.makedirs(os.path.dirname(SUMMARY_LOG), exist_ok=True)
-    with open(SUMMARY_LOG, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def save_processed_messages(msg_ids):
+    """保存已处理的消息ID"""
+    os.makedirs(os.path.dirname(PROCESSED_LOG), exist_ok=True)
+    with open(PROCESSED_LOG, 'w') as f:
+        json.dump(list(msg_ids), f)
 
 
-def record_action(action, detail='', who=None):
-    """
-    记录一个执行动作（供其他脚本调用）
+def generate_summary(messages):
+    """生成项目进展摘要（提取关键主题）"""
+    if not messages:
+        return None
     
-    Args:
-        action: 动作名称（如"签到"、"执行任务"）
-        detail: 详细信息
-        who: 指定身份（默认用环境变量WHO_AM_I）
+    # 提取有意义的消息内容
+    key_topics = []
+    for m in messages:
+        text = m['text'].strip()
+        # 过滤空消息、太短消息、机器人富文本、简单问候
+        if len(text) < 10 or text.startswith('{'):
+            continue
+        if text.lower() in ['hi', 'ok', '好', '嗯', '收到', '好的']:
+            continue
+        
+        # 提取关键词（任务、问题、完成等）
+        keywords = ['任务', '完成', '问题', '配置', '测试', '安装', '修复', '改', '写', 'push', 'git', '脚本']
+        for kw in keywords:
+            if kw in text.lower():
+                key_topics.append(text[:50])
+                break
     
-    Returns:
-        dict: 记录的内容
-    """
-    # 如果指定了who，临时切换
-    global WHO_AM_I, SUMMARY_LOG
-    original_who = WHO_AM_I
-    if who:
-        WHO_AM_I = who
-        SUMMARY_LOG = os.path.expanduser(f'~/.hermes/logs/summary_{who}.json')
+    if not key_topics:
+        return None
     
-    data = load_local_summary()
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # 生成摘要
+    now = datetime.now().strftime('%H:%M')
+    emoji = {'adai': '🐂', 'xiaojieba': '🦞', 'aimashu': '🦬'}.get(WHO_AM_I, '')
+    my_name = NAME_MAP.get(WHO_AM_I, WHO_AM_I)
     
-    record = {
-        'time': now,
-        'action': action,
-        'detail': detail,
-        'synced': False  # 标记未同步
-    }
-    data['records'].append(record)
-    data['last_time'] = now
+    # 只取前3个关键主题
+    topics = key_topics[:3]
+    summary = f"{emoji} {my_name} | {now} | " + " | ".join(topics)
     
-    # 只保留最近100条（避免太大）
-    if len(data['records']) > 100:
-        data['records'] = data['records'][-100:]
-    
-    save_local_summary(data)
-    
-    # 恢复原来的身份
-    if who:
-        WHO_AM_I = original_who
-        SUMMARY_LOG = os.path.expanduser(f'~/.hermes/logs/summary_{original_who}.json')
-    
-    return record
+    return summary
 
-# ============ 主循环 ============
+
 def main():
-    """主函数：将本地未同步的记录同步到飞书项目进展记录"""
+    """主函数"""
+    if not FEISHU_APP_ID or not FEISHU_APP_SECRET:
+        print('[错误] 未配置飞书凭证')
+        return
+    
     token = get_feishu_token()
     if not token:
         print('[错误] 获取token失败')
         return
     
-    # 找最新的项目进展记录文档（爱马仕每天创建新版）
+    # 获取群消息
+    messages = get_group_messages(token, limit=50)
+    if not messages:
+        print('[OK] 无新消息')
+        return
+    
+    # 过滤已处理的
+    processed = load_processed_messages()
+    new_messages = [m for m in messages if m['msg_id'] not in processed]
+    
+    if not new_messages:
+        print('[OK] 无新消息需要处理')
+        return
+    
+    # 处理所有未处理的新消息（不限时间）
+    recent_messages = new_messages
+    
+    if not recent_messages:
+        print(f'[OK] 无新消息需要处理')
+        return
+    
+    # 生成摘要
+    summary = generate_summary(recent_messages)
+    if not summary:
+        print('[OK] 无法生成摘要')
+        return
+    
+    # 找项目进展记录文档
     doc_id, doc_name = find_latest_progress_doc(token)
     if not doc_id:
         print('[错误] 找不到项目进展记录文档')
         return
     
-    # 读取本地记录
-    data = load_local_summary()
-    records = data.get('records', [])
+    print(f'文档: {doc_name}')
     
-    # 只同步未同步的记录
-    unsynced = [r for r in records if not r.get('synced', False)]
-    
-    if not unsynced:
-        # 没有新记录，写一个心跳
-        now = datetime.now().strftime('%H:%M')
-        my_name = NAME_MAP.get(WHO_AM_I, WHO_AM_I)
-        content = f'\n[{now}] {my_name} 心跳检查 ✓'
-        append_to_doc(token, doc_id, content)
-        print(f'[OK] 无新记录，心跳已写入')
+    # 写入摘要
+    if append_to_doc(token, doc_id, summary):
+        print(f'[OK] 已写入: {summary}')
+        # 标记为已处理
+        processed_msg_ids = set(m['msg_id'] for m in recent_messages)
+        save_processed_messages(processed | processed_msg_ids)
     else:
-        # 生成摘要而不是逐条记录
-        my_name = NAME_MAP.get(WHO_AM_I, WHO_AM_I)
-        
-        # 统计各类动作
-        action_counts = {}
-        for r in unsynced:
-            action = r.get('action', '未知')
-            action_counts[action] = action_counts.get(action, 0) + 1
-        
-        # 生成摘要内容
-        now = datetime.now().strftime('%H:%M')
-        emoji = {'adai': '🐂', 'xiaojieba': '🦞', 'aimashu': '🦬'}.get(WHO_AM_I, '')
-        summary_parts = [f"{emoji} {my_name} 摘要 | {now}"]
-        
-        for action, count in action_counts.items():
-            summary_parts.append(f"{action} {count}次")
-        
-        content = ' | '.join(summary_parts)
-        
-        if append_to_doc(token, doc_id, content):
-            # 全部标记为已同步
-            for r in unsynced:
-                r['synced'] = True
-            save_local_summary(data)
-            print(f'[OK] 已写入摘要: {content}')
-        else:
-            print(f'[错误] 写入失败')
+        print('[错误] 写入失败')
+
 
 if __name__ == '__main__':
     main()
