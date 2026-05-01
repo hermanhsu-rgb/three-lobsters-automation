@@ -312,16 +312,36 @@ def find_my_task(message_board_content, who):
 
 
 def spawn_agent_and_execute(who, task, message_board_id):
-    """Spawn子agent真正执行任务"""
+    """Spawn子agent真正执行任务 - 增强稳定性版本"""
     task_id = task['id']
     content = task['content']
     emoji = WHO_EMOJI.get(who, '🤖')
     name = WHO_NAME.get(who, who)
     
-    # 导入Hermes AIAgent - 动态路径，适配不同机器
+    # 导入Hermes AIAgent - 使用更稳定的导入方式
     hermes_agent_path = os.path.expanduser('~/.hermes/hermes-agent')
-    sys.path.insert(0, hermes_agent_path)
-    from run_agent import AIAgent
+    
+    # 检查路径是否存在
+    if not os.path.exists(hermes_agent_path):
+        print(f"[错误] Hermes Agent路径不存在: {hermes_agent_path}")
+        return False
+    
+    # 避免重复插入路径
+    if hermes_agent_path not in sys.path:
+        sys.path.insert(0, hermes_agent_path)
+        print(f"[导入] 添加路径到sys.path: {hermes_agent_path}")
+    
+    # 尝试导入AIAgent
+    try:
+        from run_agent import AIAgent
+        print("[成功] AIAgent模块导入成功")
+    except ImportError as e:
+        print(f"[错误] 无法导入AIAgent: {e}")
+        print(f"[提示] 检查依赖: pip list | grep openai")
+        return False
+    except Exception as e:
+        print(f"[错误] 导入AIAgent时发生未知错误: {e}")
+        return False
     
     # 构造具体执行prompt - 根据任务类型区分
     prompt = f"""你是{emoji}{name}，执行者角色。
@@ -353,28 +373,62 @@ ID: {task_id}
 - 立即执行，完成后返回结果摘要
 """
     
-    try:
-        # 真正spawn子agent
-        agent = AIAgent(
-            model="glm-5",
-            enabled_toolsets=["feishu_doc", "file", "terminal", "web"],
-            max_iterations=15,
-            quiet_mode=True
-        )
-        
-        result = agent.run_conversation(prompt)
-        # 安全处理返回值
-        if result:
-            result_str = str(result)[:500] if isinstance(result, str) else str(type(result))
-        else:
-            result_str = '无输出'
-        print(f"[完成] 子agent返回: {result_str}")
-        return True
-        
-    except Exception as e:
-        print(f"[错误] spawn失败: {e}")
-        # 备用方案：直接写飞书
-        return False
+    # 重试机制：最多尝试3次
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"[尝试] Spawn子agent (第{attempt}/{max_retries}次)...")
+            
+            # 真正spawn子agent
+            agent = AIAgent(
+                model="glm-5",
+                enabled_toolsets=["feishu_doc", "file", "terminal", "web"],
+                max_iterations=15,
+                quiet_mode=True
+            )
+            print("[创建] AIAgent实例创建成功")
+            
+            # 执行任务
+            print("[执行] 子agent开始执行任务...")
+            result = agent.run_conversation(prompt)
+            
+            # 安全处理返回值
+            if result:
+                if isinstance(result, dict):
+                    result_str = f"dict with keys: {list(result.keys())}"
+                elif isinstance(result, str):
+                    result_str = f"str ({len(result)} chars): {result[:200]}"
+                else:
+                    result_str = f"{type(result).__name__}: {str(result)[:200]}"
+            else:
+                result_str = '无输出'
+            
+            print(f"[完成] 子agent返回: {result_str}")
+            return True
+            
+        except KeyboardInterrupt:
+            print("[中断] 用户中断执行")
+            return False
+        except Exception as e:
+            print(f"[错误] Spawn失败 (尝试 {attempt}/{max_retries}): {type(e).__name__}: {e}")
+            
+            # 如果是最后一次尝试，打印详细错误
+            if attempt == max_retries:
+                import traceback
+                print("[详细错误] " + traceback.format_exc())
+                print("[失败] 所有重试均失败，请检查：")
+                print("  1. Hermes Agent是否正确安装")
+                print("  2. 依赖包是否完整 (pip install -r requirements.txt)")
+                print("  3. 环境变量是否配置正确")
+                return False
+            else:
+                # 等待后重试
+                import time
+                wait_time = 2 * attempt
+                print(f"[等待] {wait_time}秒后重试...")
+                time.sleep(wait_time)
+    
+    return False
 
 
 def checkout_signin(token, who):
