@@ -301,24 +301,44 @@ def spawn_pm_thinking_agent(token, completions):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造思考prompt
+    # 构造思考prompt - 明确PM职责和思考过程
     prompt = f"""你是🦬爱马仕，PM角色。
 
-最近完成的任务：{json.dumps(completions, ensure_ascii=False)}
+## 最近完成的任务
+{json.dumps(completions, ensure_ascii=False)}
 
-项目任务分配表：
+## 项目任务分配表
 {project_content}
 
-请思考并发布下一个任务。要求：
-1. 确认完成情况
-2. 决定下一步做什么
-3. 使用feishu_doc技能在留言板({MESSAGE_BOARD_ID})发布新任务
+## PM思考步骤（必须按顺序执行）
+1. **分析进度**：
+   - 统计已完成任务数
+   - 找出项目当前阶段
+   - 识别存在的瓶颈或问题
 
-发布格式：
-[时间] 🦬爱马仕 发布任务
-T数字: 任务内容 → 🐂阿呆/🦜小结巴
+2. **制定下一步**：
+   - 确定最紧急的任务（修复bug > 添加功能 > 测试 > 优化）
+   - 决定任务分配（阿呆擅长代码/系统，小结巴擅长文档/测试）
+   - 写出具体的任务描述
 
-直接执行，返回发布结果。
+3. **发布任务**：
+   用feishu_doc技能在留言板发布：
+   ```
+   [{datetime.now().strftime('%H:%M')}] 🦬爱马仕 发布任务
+   T[数字]: [具体任务内容] → 🐂阿呆/🦜小结巴
+   ```
+
+## 任务类型示例
+- **修复类**：修复[bug描述]，原因是[原因]，方法是[方案]
+- **功能类**：添加[功能名]，需求是[需求]，实现方法是[方法]
+- **测试类**：测试[模块名]，验证[功能点]
+- **文档类**：编写[文档名]，内容是[概要]
+
+## 重要
+- 不要只写"发布任务"，必须写出具体任务内容
+- 必须有思考过程（分析→制定→发布）
+- 如果所有任务都完成了，写"🎉 本阶段任务全部完成"
+- 立即执行，返回发布的任务内容
 """
     
     print(f"[spawn] 启动PM子agent思考...")
@@ -336,7 +356,7 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
         agent = AIAgent(
             model="glm-5",
             enabled_toolsets=["feishu_doc", "file"],
-            max_iterations=10,
+            max_iterations=15,
             quiet_mode=True
         )
         
@@ -345,7 +365,7 @@ T数字: 任务内容 → 🐂阿呆/🦜小结巴
         
         # 安全处理返回值
         if result:
-            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
+            result_str = str(result)[:500] if isinstance(result, str) else str(type(result))
         else:
             result_str = '无输出'
         print(f"[完成] PM子agent返回: {result_str}")

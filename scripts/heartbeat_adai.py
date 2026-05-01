@@ -271,19 +271,22 @@ def find_my_task(message_board_content, who):
     """从留言板找分配给自己的任务（排除已完成的）"""
     import re
     name = WHO_NAME.get(who, '未知')
+    emoji = WHO_EMOJI.get(who, '')
     
     # 加载已完成任务
     completed = load_completed_tasks(who)
     
-    # 支持两种格式：
-    # 1. 单行：T1: 任务内容 @阿呆
-    # 2. 多行：T1: 任务内容\n执行人：阿呆
+    # 支持多种格式：
+    # 1. T1: 任务内容 → 🐂阿呆
+    # 2. DSD-001: 任务内容 → 🐂阿呆
+    # 3. T1: 任务内容 @阿呆
+    # 4. 多行：T1: 任务内容\n执行人：阿呆
     lines = message_board_content.split('\n')
     i = 0
     while i < len(lines):
         line = lines[i]
-        # 匹配 T1: 或 T2: 等任务开头
-        match = re.match(r'(T\d+):', line)
+        # 匹配任务ID：T数字、DSD-数字、DSD-字母数字组合
+        match = re.match(r'((?:T\d+|DSD-[\w]+|TASK-[\w]+)):', line)
         if match:
             task_id = match.group(1)
             # 跳过已完成的任务
@@ -291,21 +294,25 @@ def find_my_task(message_board_content, who):
                 i += 1
                 continue
             
-            # 检查当前行和接下来3行是否有自己的名字
+            # 检查当前行和接下来3行是否有自己的名字或emoji
             check_lines = [line] + lines[i+1:i+4]
             check_text = '\n'.join(check_lines)
             
-            if name in check_text:
-                # 提取任务内容（冒号后到行尾）
+            # 匹配：名字、emoji+名字、→ emoji名字
+            if name in check_text or (emoji and emoji in check_text):
+                # 提取任务内容（冒号后到行尾，去掉分配标记）
                 pos = line.find(':')
                 task_content = line[pos+1:].strip()
+                # 去掉分配标记（→ xxx）
+                if '→' in task_content:
+                    task_content = task_content.split('→')[0].strip()
                 return {'id': task_id, 'content': task_content, 'raw': check_text}
         i += 1
     return None
 
 
 def spawn_agent_and_execute(who, task, message_board_id):
-    """Spawn子agent执行任务"""
+    """Spawn子agent真正执行任务"""
     task_id = task['id']
     content = task['content']
     emoji = WHO_EMOJI.get(who, '🤖')
@@ -316,30 +323,49 @@ def spawn_agent_and_execute(who, task, message_board_id):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造prompt
-    prompt = f"""你是{emoji}{name}，执行任务 {task_id}。
+    # 构造具体执行prompt - 根据任务类型区分
+    prompt = f"""你是{emoji}{name}，执行者角色。
 
-任务内容: {content}
+## 当前任务
+ID: {task_id}
+内容: {content}
 
-要求：
-1. 使用feishu-doc技能完成任务（修改留言板文档：{message_board_id})
-2. 在留言板写入：✅ {task_id}完成
-3. 不要解释，直接执行并返回结果
+## 执行步骤（必须全部执行）
+1. **理解任务**：分析任务要求，确定执行方法
+2. **执行任务**：
+   - 如果是计算题：计算并得出答案
+   - 如果是文档操作：用feishu-doc技能读取/修改飞书文档
+   - 如果是代码任务：用terminal和file工具编写/修改代码
+   - 如果是研究任务：用web_search搜索信息
+3. **记录结果**：将执行结果写入留言板(doc_id: {message_board_id})
+
+## 输出格式（必须写在留言板）
+[{datetime.now().strftime('%H:%M')}] {emoji}{name}
+任务: {task_id} - {content}
+执行过程: [简要描述你做了什么]
+结果: [具体结果，如计算答案、修改内容、研究发现等]
+✅ {task_id} 完成
+
+## 重要
+- 不要只写"完成"，必须写出具体执行内容和结果
+- 如果任务涉及飞书文档，用feishu-doc技能
+- 如果任务涉及代码，用terminal或file工具
+- 立即执行，完成后返回结果摘要
 """
     
     try:
         # 真正spawn子agent
         agent = AIAgent(
             model="glm-5",
-            enabled_toolsets=["feishu_doc", "file"],
-            max_iterations=10,
+            enabled_toolsets=["feishu_doc", "file", "terminal", "web"],
+            max_iterations=15,
             quiet_mode=True
         )
         
         result = agent.run_conversation(prompt)
         # 安全处理返回值
         if result:
-            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
+            result_str = str(result)[:500] if isinstance(result, str) else str(type(result))
         else:
             result_str = '无输出'
         print(f"[完成] 子agent返回: {result_str}")
