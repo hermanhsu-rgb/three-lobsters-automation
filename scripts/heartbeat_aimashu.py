@@ -301,30 +301,30 @@ def spawn_pm_thinking_agent(token, completions):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造思考prompt - 真正PM思考
+    # 构造思考prompt - 强制发布DSD任务
     prompt = f"""你是🦬爱马仕，PM角色。
 
-最近完成的任务：{json.dumps(completions, ensure_ascii=False)}
-
-【当前项目】DSD文章修订任务
+## 当前项目：DSD文章修订
 - 20篇文章初稿已完成
 - 19篇提到KOL/Master过于明显，需要隐性植入
-- 上次分配：文章01-05给小结巴，06-10给阿呆，11-20给爱马仕
-- 进度落后，需要继续执行
+- 进度落后，需要立即执行
 
-【你的任务】
-1. 读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe），了解当前进度
-2. 检查留言板，看小结巴/阿呆有没有回复检查结果
-3. 如果没人回复，发布针对性任务：
-   - 如果小结巴没回复，发布：检查文章01-05，写出KOL修改建议
-   - 如果阿呆没回复，发布：修复小结巴脚本bug
-4. 使用feishu_doc技能发布到留言板
+## 你的任务（必须执行）
+1. 使用feishu_doc技能读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe）
+2. 在留言板发布DSD文章检查任务：
 
-【发布格式】
-[时间] 🦬爱马仕 发布任务
-T数字: 具体任务内容 → 🐂阿呆/🦜小结巴
+**必须发布的任务格式：**
+```
+[15:52] 🦬爱马仕 发布任务
+T51: 检查DSD文章01-05，找出KOL/Master过于明显的句子，写出修改建议 → 🦜小结巴
 
-直接执行，返回结果。
+T52: 修复小结巴脚本bug - 让它能识别DSD任务格式并真正执行 → 🐂阿呆
+```
+
+## 重要
+- 必须使用feishu_doc技能写入留言板
+- 不要只返回文本，必须真正执行
+- 任务内容必须具体（检查文章、修复bug等）
 """
     
     print(f"[spawn] 启动PM子agent思考...")
