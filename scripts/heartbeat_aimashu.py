@@ -301,44 +301,30 @@ def spawn_pm_thinking_agent(token, completions):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造思考prompt - 明确PM职责和思考过程
+    # 构造思考prompt - 真正PM思考
     prompt = f"""你是🦬爱马仕，PM角色。
 
-## 最近完成的任务
-{json.dumps(completions, ensure_ascii=False)}
+最近完成的任务：{json.dumps(completions, ensure_ascii=False)}
 
-## 项目任务分配表
-{project_content}
+【当前项目】DSD文章修订任务
+- 20篇文章初稿已完成
+- 19篇提到KOL/Master过于明显，需要隐性植入
+- 上次分配：文章01-05给小结巴，06-10给阿呆，11-20给爱马仕
+- 进度落后，需要继续执行
 
-## PM思考步骤（必须按顺序执行）
-1. **分析进度**：
-   - 统计已完成任务数
-   - 找出项目当前阶段
-   - 识别存在的瓶颈或问题
+【你的任务】
+1. 读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe），了解当前进度
+2. 检查留言板，看小结巴/阿呆有没有回复检查结果
+3. 如果没人回复，发布针对性任务：
+   - 如果小结巴没回复，发布：检查文章01-05，写出KOL修改建议
+   - 如果阿呆没回复，发布：修复小结巴脚本bug
+4. 使用feishu_doc技能发布到留言板
 
-2. **制定下一步**：
-   - 确定最紧急的任务（修复bug > 添加功能 > 测试 > 优化）
-   - 决定任务分配（阿呆擅长代码/系统，小结巴擅长文档/测试）
-   - 写出具体的任务描述
+【发布格式】
+[时间] 🦬爱马仕 发布任务
+T数字: 具体任务内容 → 🐂阿呆/🦜小结巴
 
-3. **发布任务**：
-   用feishu_doc技能在留言板发布：
-   ```
-   [{datetime.now().strftime('%H:%M')}] 🦬爱马仕 发布任务
-   T[数字]: [具体任务内容] → 🐂阿呆/🦜小结巴
-   ```
-
-## 任务类型示例
-- **修复类**：修复[bug描述]，原因是[原因]，方法是[方案]
-- **功能类**：添加[功能名]，需求是[需求]，实现方法是[方法]
-- **测试类**：测试[模块名]，验证[功能点]
-- **文档类**：编写[文档名]，内容是[概要]
-
-## 重要
-- 不要只写"发布任务"，必须写出具体任务内容
-- 必须有思考过程（分析→制定→发布）
-- 如果所有任务都完成了，写"🎉 本阶段任务全部完成"
-- 立即执行，返回发布的任务内容
+直接执行，返回结果。
 """
     
     print(f"[spawn] 启动PM子agent思考...")
@@ -356,7 +342,7 @@ def spawn_pm_thinking_agent(token, completions):
         agent = AIAgent(
             model="glm-5",
             enabled_toolsets=["feishu_doc", "file"],
-            max_iterations=15,
+            max_iterations=10,
             quiet_mode=True
         )
         
@@ -365,7 +351,7 @@ def spawn_pm_thinking_agent(token, completions):
         
         # 安全处理返回值
         if result:
-            result_str = str(result)[:500] if isinstance(result, str) else str(type(result))
+            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
         else:
             result_str = '无输出'
         print(f"[完成] PM子agent返回: {result_str}")
@@ -483,42 +469,25 @@ def heartbeat_pm(who):
         for c in completions:
             print(f"  - {c['who']} {c['task']}")
         
-        # 有人完成任务，发布下一个任务
-        print(f"\n[发布] 有人完成任务，发布新任务")
+        # 有人完成任务，spawn子agent真正思考并发布下一个任务
+        print(f"\n[思考] 启动PM子agent思考下一步...")
+        success = spawn_pm_thinking_agent(token, completions)
         
-        # 从项目任务分配表读任务
-        project_content = read_doc(token, PROJECT_DOC_ID)
-        tasks = re.findall(r'(T\d+):\s*(.+?)(?:\n|$)', project_content)
-        
-        # 找到未发布过的任务
-        next_task_num = len(all_tasks) + 1
-        next_task_id = f"T{next_task_num}"
-        
-        # 如果任务分配表有定义，用分配表的
-        for t_id, t_content in tasks:
-            if t_id not in all_tasks:
-                next_task_id = t_id
-                task_content = t_content
-                break
+        if success:
+            print("[OK] PM子agent已发布新任务")
+            record_action('PM思考', '发布新任务', who='aimashu')
         else:
-            # 否则用简单模板
+            print("[WARN] PM子agent失败，使用简单发布")
+            # 备用：简单发布
+            next_executor = get_next_executor()
+            assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
+            assignee_name = WHO_NAME.get(next_executor, '未知')
+            next_task_num = len(all_tasks) + 1
+            next_task_id = f"T{next_task_num}"
             task_content = f"测试任务 {next_task_id}"
-        
-        # 轮流分配
-        next_executor = get_next_executor()
-        assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
-        assignee_name = WHO_NAME.get(next_executor, '未知')
-        
-        now = datetime.now().strftime('%H:%M')
-        task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
-        append_to_doc(token, message_board_id, task_text)
-        print(f"[发布] {next_task_id} 已分配给 {assignee_name}（轮流）")
-        record_action('发布任务', f'{next_task_id} → {assignee_name}', who='aimashu')
-        
-        # 发消息触发执行者
-        trigger_msg = f"🦬爱马仕 发布新任务：{next_task_id}，请 {assignee_emoji}{assignee_name} 执行"
-        send_feishu_message(token, trigger_msg)
-        print(f"[触发] 已发消息触发执行者")
+            now = datetime.now().strftime('%H:%M')
+            task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
+            append_to_doc(token, message_board_id, task_text)
     
     # 8. 如果待执行任务 < 2，主动发布新任务填补
     elif pending_count < 2:
