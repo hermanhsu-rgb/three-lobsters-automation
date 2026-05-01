@@ -301,30 +301,30 @@ def spawn_pm_thinking_agent(token, completions):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造思考prompt - 真正PM思考
+    # 构造思考prompt - 强制发布DSD任务
     prompt = f"""你是🦬爱马仕，PM角色。
 
-最近完成的任务：{json.dumps(completions, ensure_ascii=False)}
-
-【当前项目】DSD文章修订任务
+## 当前项目：DSD文章修订
 - 20篇文章初稿已完成
 - 19篇提到KOL/Master过于明显，需要隐性植入
-- 上次分配：文章01-05给小结巴，06-10给阿呆，11-20给爱马仕
-- 进度落后，需要继续执行
+- 进度落后，需要立即执行
 
-【你的任务】
-1. 读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe），了解当前进度
-2. 检查留言板，看小结巴/阿呆有没有回复检查结果
-3. 如果没人回复，发布针对性任务：
-   - 如果小结巴没回复，发布：检查文章01-05，写出KOL修改建议
-   - 如果阿呆没回复，发布：修复小结巴脚本bug
-4. 使用feishu_doc技能发布到留言板
+## 你的任务（必须执行）
+1. 使用feishu_doc技能读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe）
+2. 在留言板发布DSD文章检查任务：
 
-【发布格式】
-[时间] 🦬爱马仕 发布任务
-T数字: 具体任务内容 → 🐂阿呆/🦜小结巴
+**必须发布的任务格式：**
+```
+[15:52] 🦬爱马仕 发布任务
+T51: 检查DSD文章01-05，找出KOL/Master过于明显的句子，写出修改建议 → 🦜小结巴
 
-直接执行，返回结果。
+T52: 修复小结巴脚本bug - 让它能识别DSD任务格式并真正执行 → 🐂阿呆
+```
+
+## 重要
+- 必须使用feishu_doc技能写入留言板
+- 不要只返回文本，必须真正执行
+- 任务内容必须具体（检查文章、修复bug等）
 """
     
     print(f"[spawn] 启动PM子agent思考...")
@@ -489,18 +489,16 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
     
-    # 8. 如果待执行任务 < 2，检查是否需要发布任务
+    # 8. 如果待执行任务 < 2，spawn子agent思考发布真实任务
     elif pending_count < 2:
-        # 检查留言板是否已有DSD任务
-        has_dsd_task = any('DSD' in line or '文章' in line or 'KOL' in line 
-                         for line in message_board_content.split('\n') if 'T' in line)
+        print(f"\n[思考] 待执行任务不足，启动PM子agent思考...")
+        success = spawn_pm_thinking_agent(token, [])
         
-        if has_dsd_task and pending_count > 0:
-            print(f"\n[等待] 已有DSD任务待执行({pending_count}个)，等待完成")
+        if success:
+            print("[OK] PM子agent已发布真实任务")
+            record_action('PM思考', '主动发布任务', who='aimashu')
         else:
-            # 真正需要发布时，从项目进度获取下一个任务
-            print(f"\n[发布] 检查项目进度，发布真正任务")
-            # TODO: 从PROJECT_DOC_ID读取项目进度，发布下一个DSD任务
+            print("[WARN] PM子agent失败，跳过")
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
