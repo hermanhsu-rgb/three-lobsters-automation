@@ -110,31 +110,21 @@ def create_today_doc(token, date_str):
 
 
 def append_to_doc(token, doc_id, content):
-    """追加内容到文档末尾"""
-    # 先获取文档blocks
-    blocks_url = f'https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks'
-    headers = {'Authorization': f'Bearer {token}'}
-    resp = requests.get(blocks_url, headers=headers, timeout=30)
-    blocks = resp.json().get('data', {}).get('items', [])
-    
-    if not blocks:
-        return False
-    
-    # 找到最后一个block
-    last_block_id = blocks[-1].get('block_id')
-    
-    # 追加内容
-    update_url = f'https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{last_block_id}/children/append'
-    resp = requests.post(update_url, headers=headers, json={
+    """追加内容到文档"""
+    url = f'https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children'
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json; charset=utf-8'
+    }
+    resp = requests.post(url, headers=headers, json={
         'children': [
             {
-                'block_type': 3,  # Text block
+                'block_type': 2,  # Text block
                 'text': {
                     'elements': [{'text_run': {'content': content}}]
                 }
             }
-        ],
-        'index': 0
+        ]
     }, timeout=30)
     return resp.status_code == 200
 
