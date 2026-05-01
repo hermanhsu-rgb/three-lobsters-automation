@@ -16,7 +16,7 @@ FEISHU_APP_ID = os.environ.get('FEISHU_APP_ID')
 FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET')
 
 PROJECT_FOLDER_TOKEN = 'P9Q1fSCyrlS0lqd8Y9Tcfbncnl9'
-CHAT_ID = 'oc_6e680216125c663a3359e07cb6831fe7'  # 助力群
+CHAT_ID = os.environ.get('FEISHU_CHAT_ID', 'oc_6e680216125c663a3359e07cb6831fe7')  # 默认助力群
 
 # 已处理消息记录
 PROCESSED_LOG = os.path.expanduser(f'~/.hermes/logs/processed_messages.json')
