@@ -489,16 +489,24 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
     
-    # 8. 如果待执行任务 < 2，spawn子agent思考发布真实任务
+    # 8. 如果待执行任务不足，直接发布DSD任务
     elif pending_count < 2:
-        print(f"\n[思考] 待执行任务不足，启动PM子agent思考...")
-        success = spawn_pm_thinking_agent(token, [])
+        print(f"\n[发布] 待执行任务不足，发布DSD任务")
         
-        if success:
-            print("[OK] PM子agent已发布真实任务")
-            record_action('PM思考', '主动发布任务', who='aimashu')
-        else:
-            print("[WARN] PM子agent失败，跳过")
+        # 直接发布DSD文章检查任务
+        now = datetime.now().strftime('%H:%M')
+        
+        # T51: 小结巴检查文章
+        task1 = f"\n[{now}] 🦬爱马仕 发布任务\nT51: 检查DSD文章01-05，找出KOL/Master过于明显的句子，写出修改建议 → 🦜小结巴\n"
+        append_to_doc(token, message_board_id, task1)
+        print("[发布] T51 → 小结巴（检查文章01-05）")
+        
+        # T52: 阿呆修复脚本
+        task2 = f"\n[{now}] 🦬爱马仕 发布任务\nT52: 修复小结巴脚本bug - 让它能识别DSD任务并真正执行 → 🐂阿呆\n"
+        append_to_doc(token, message_board_id, task2)
+        print("[发布] T52 → 阿呆（修复脚本）")
+        
+        record_action('发布DSD任务', 'T51+T52', who='aimashu')
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
