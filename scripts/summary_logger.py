@@ -51,7 +51,7 @@ def get_feishu_token():
 
 
 def find_latest_progress_doc(token):
-    """找最新的项目进展记录文档（爱马仕每天创建新版）"""
+    """找最新的项目进展记录文档（优先选带今天日期的）"""
     url = f'https://open.feishu.cn/open-apis/drive/v1/files?folder_token={PROJECT_FOLDER_TOKEN}&page_size=50'
     headers = {'Authorization': f'Bearer {token}'}
     resp = requests.get(url, headers=headers, timeout=30)
@@ -59,6 +59,8 @@ def find_latest_progress_doc(token):
     
     # 找所有项目进展记录文档
     progress_docs = []
+    today = datetime.now().strftime('%Y-%m-%d')
+    
     for f in files:
         name = f.get('name', '')
         # 匹配：项目进展记录 或 项目进展记录 (日期)
@@ -66,11 +68,19 @@ def find_latest_progress_doc(token):
             progress_docs.append({
                 'token': f.get('token'),
                 'name': name,
-                'modified_time': int(f.get('modified_time', 0))
+                'modified_time': int(f.get('modified_time', 0)),
+                'has_today': today in name  # 标记是否包含今天日期
             })
     
     if not progress_docs:
         return None, None
+    
+    # 优先选带今天日期的，否则选最新的
+    today_docs = [d for d in progress_docs if d['has_today']]
+    if today_docs:
+        latest = today_docs[0]
+        print(f"[OK] 找到今天的项目进展记录: {latest['name']}")
+        return latest['token'], latest['name']
     
     # 按修改时间排序，返回最新的
     progress_docs.sort(key=lambda x: x['modified_time'], reverse=True)
