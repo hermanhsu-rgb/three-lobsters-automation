@@ -11,7 +11,6 @@ load_dotenv('/root/.hermes/.env')
 
 APP_ID = os.environ.get('FEISHU_APP_ID')
 APP_SECRET = os.environ.get('FEISHU_APP_SECRET')
-
 def get_token():
     url = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'
     data = json.dumps({'app_id': APP_ID, 'app_secret': APP_SECRET}).encode('utf-8')

@@ -489,29 +489,18 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
     
-    # 8. 如果待执行任务 < 2，主动发布新任务填补
+    # 8. 如果待执行任务 < 2，检查是否需要发布任务
     elif pending_count < 2:
-        print(f"\n[发布] 待执行任务不足，主动发布新任务")
-        tasks_to_publish = 2 - pending_count
+        # 检查留言板是否已有DSD任务
+        has_dsd_task = any('DSD' in line or '文章' in line or 'KOL' in line 
+                         for line in message_board_content.split('\n') if 'T' in line)
         
-        for i in range(tasks_to_publish):
-            next_executor = get_next_executor()
-            assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
-            assignee_name = WHO_NAME.get(next_executor, '未知')
-            
-            # 计算下一个任务号（按序列递增）
-            if all_tasks:
-                max_task_num = max(int(t[1:]) for t in all_tasks)  # 提取T后面的数字
-                next_task_num = max_task_num + 1 + i
-            else:
-                next_task_num = 1 + i
-            task_id = f"T{next_task_num}"
-            task_content = f"测试任务 {task_id}"
-            
-            now = datetime.now().strftime('%H:%M')
-            task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
-            append_to_doc(token, message_board_id, task_text)
-            print(f"[发布] {task_id} 已分配给 {assignee_name}（轮流）")
+        if has_dsd_task and pending_count > 0:
+            print(f"\n[等待] 已有DSD任务待执行({pending_count}个)，等待完成")
+        else:
+            # 真正需要发布时，从项目进度获取下一个任务
+            print(f"\n[发布] 检查项目进度，发布真正任务")
+            # TODO: 从PROJECT_DOC_ID读取项目进度，发布下一个DSD任务
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):

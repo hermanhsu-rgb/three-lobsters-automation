@@ -48,7 +48,7 @@ FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET', '')
 SIGNIN_FOLDER_ID = os.environ.get('SIGNIN_FOLDER_ID', 'TUcWf6Kyql4d6gdi1nWc7TxVnDe')
 MESSAGE_BOARD_ID = os.environ.get('MESSAGE_BOARD_ID', 'Lj0OdVYvuoAKvVxOxr0crc9ynWg')
 TASK_BOARD_ID = os.environ.get('TASK_BOARD_ID', 'EFcudwbCCozKaQx2peocy7NIn5b')
-FEISHU_GROUP_ID = os.environ.get('FEISHU_GROUP_ID', 'oc_6e680216125c663a3359e07cb6831fe7')
+FEISHU_GROUP_ID = os.environ.get('FEISHU_GROUP_ID', 'oc_52c3df036009fd87f62df9285d92aef5')
 
 # 身份映射
 WHO_EMOJI = {
@@ -316,15 +316,31 @@ def spawn_agent_and_execute(who, task):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 构造prompt
-    prompt = f"""你是{emoji}{name}，执行任务 {task_id}。
+    # 构造具体执行prompt - 根据任务内容智能执行
+    prompt = f"""你是{emoji}{name}，执行者角色。
 
-任务内容: {content}
+## 任务信息
+ID: {task_id}
+内容: {content}
 
-要求：
-1. 使用feishu-doc技能完成任务（修改留言板文档：{MESSAGE_BOARD_ID})
-2. 在留言板写入：✅ {task_id}完成
-3. 不要解释，直接执行并返回结果
+## 执行要求（必须完整执行）
+1. **分析任务**：理解任务要求，确定执行方法
+2. **真正执行**：
+   - 如果是文档任务：用feishu-doc读取/修改对应文档
+   - 如果是DSD文章检查：读取文章内容 → 找出KOL/Master句子 → 写修改建议
+   - 如果是代码任务：用terminal/file工具编写代码
+   - 如果是研究任务：用web_search搜索信息
+3. **写入结果**：在留言板({MESSAGE_BOARD_ID})写入详细执行结果
+   格式：
+   [时间] {emoji}{name}
+   任务: {task_id}
+   执行过程: [你具体做了什么]
+   结果: [详细结果内容]
+   ✅ {task_id} 完成
+
+## 重要
+- 必须真正执行任务内容，不能只写"✅完成"
+- 返回执行过程和具体结果
 """
     
     try:
