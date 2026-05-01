@@ -316,6 +316,10 @@ def spawn_agent_and_execute(who, task):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
+    # 记录执行前的留言板内容（用于对比验证）
+    token = get_token()
+    board_before = read_doc(token, message_board_id) if token else ""
+    
     # 构造具体执行prompt - 根据任务内容智能执行
     prompt = f"""你是{emoji}{name}，执行者角色。
 
@@ -330,7 +334,7 @@ ID: {task_id}
    - 如果是DSD文章检查：读取文章内容 → 找出KOL/Master句子 → 写修改建议
    - 如果是代码任务：用terminal/file工具编写代码
    - 如果是研究任务：用web_search搜索信息
-3. **写入结果**：在留言板({MESSAGE_BOARD_ID})写入详细执行结果
+3. **写入结果**：在留言板({message_board_id})写入详细执行结果
    格式：
    [时间] {emoji}{name}
    任务: {task_id}
@@ -340,6 +344,7 @@ ID: {task_id}
 
 ## 重要
 - 必须真正执行任务内容，不能只写"✅完成"
+- 必须调用工具写入留言板，不能只回复文本
 - 返回执行过程和具体结果
 """
     
@@ -347,23 +352,38 @@ ID: {task_id}
         # 真正spawn子agent
         agent = AIAgent(
             model="glm-5",
-            enabled_toolsets=["feishu_doc", "file"],
-            max_iterations=10,
+            enabled_toolsets=["feishu_doc", "file", "terminal", "web"],
+            max_iterations=15,
             quiet_mode=True
         )
         
-        result = agent.run_conversation(prompt)
-        # 安全处理返回值
-        if result:
-            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
+        result = agent.chat(prompt)
+        
+        # 验证执行结果 - 必须检查留言板是否真正写入
+        print(f"[验证] 检查留言板是否写入...")
+        import time
+        time.sleep(2)  # 等待API同步
+        
+        board_after = read_doc(token, message_board_id) if token else ""
+        
+        # 验证条件：留言板有新增内容 且 包含任务ID和"结果:"
+        if board_after and len(board_after) > len(board_before):
+            # 检查是否包含本次任务的执行记录
+            if task_id in board_after and '结果' in board_after:
+                print(f"[✓] 验证通过：留言板已写入任务执行结果")
+                return True
+            else:
+                print(f"[✗] 验证失败：留言板有新增但无任务执行记录")
+                print(f"    新增内容预览: {board_after[-200:]}")
+                return False
         else:
-            result_str = '无输出'
-        print(f"[完成] 子agent返回: {result_str}")
-        return True
+            print(f"[✗] 验证失败：留言板无新增内容")
+            return False
         
     except Exception as e:
         print(f"[错误] spawn失败: {e}")
-        # 备用方案：直接写飞书
+        import traceback
+        traceback.print_exc()
         return False
 
 
