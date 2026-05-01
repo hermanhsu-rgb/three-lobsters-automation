@@ -228,24 +228,33 @@ def main():
         append_to_doc(token, doc_id, content)
         print(f'[OK] 无新记录，心跳已写入')
     else:
-        # 写入未同步的记录
+        # 生成摘要而不是逐条记录
         my_name = NAME_MAP.get(WHO_AM_I, WHO_AM_I)
-        count = 0
         
+        # 统计各类动作
+        action_counts = {}
         for r in unsynced:
-            time_str = r.get('time', '').split(' ')[1] if ' ' in r.get('time', '') else r.get('time', '')
-            content = f'\n[{time_str}] {my_name}: {r.get("action", "")}'
-            if r.get('detail'):
-                content += f' - {r.get("detail")}'
-            
-            if append_to_doc(token, doc_id, content):
-                # 标记为已同步
-                r['synced'] = True
-                count += 1
+            action = r.get('action', '未知')
+            action_counts[action] = action_counts.get(action, 0) + 1
         
-        # 保存更新后的数据（已同步的记录保留在本地作为备份）
-        save_local_summary(data)
-        print(f'[OK] 已同步 {count}/{len(unsynced)} 条记录')
+        # 生成摘要内容
+        now = datetime.now().strftime('%H:%M')
+        emoji = {'adai': '🐂', 'xiaojieba': '🦞', 'aimashu': '🦬'}.get(WHO_AM_I, '')
+        summary_parts = [f"{emoji} {my_name} 摘要 | {now}"]
+        
+        for action, count in action_counts.items():
+            summary_parts.append(f"{action} {count}次")
+        
+        content = ' | '.join(summary_parts)
+        
+        if append_to_doc(token, doc_id, content):
+            # 全部标记为已同步
+            for r in unsynced:
+                r['synced'] = True
+            save_local_summary(data)
+            print(f'[OK] 已写入摘要: {content}')
+        else:
+            print(f'[错误] 写入失败')
 
 if __name__ == '__main__':
     main()
