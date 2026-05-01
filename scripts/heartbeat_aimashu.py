@@ -489,29 +489,16 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
     
-    # 8. 如果待执行任务 < 2，主动发布新任务填补
+    # 8. 如果待执行任务 < 2，spawn子agent思考发布真实任务
     elif pending_count < 2:
-        print(f"\n[发布] 待执行任务不足，主动发布新任务")
-        tasks_to_publish = 2 - pending_count
+        print(f"\n[思考] 待执行任务不足，启动PM子agent思考...")
+        success = spawn_pm_thinking_agent(token, [])
         
-        for i in range(tasks_to_publish):
-            next_executor = get_next_executor()
-            assignee_emoji = WHO_EMOJI.get(next_executor, '❓')
-            assignee_name = WHO_NAME.get(next_executor, '未知')
-            
-            # 计算下一个任务号（按序列递增）
-            if all_tasks:
-                max_task_num = max(int(t[1:]) for t in all_tasks)  # 提取T后面的数字
-                next_task_num = max_task_num + 1 + i
-            else:
-                next_task_num = 1 + i
-            task_id = f"T{next_task_num}"
-            task_content = f"测试任务 {task_id}"
-            
-            now = datetime.now().strftime('%H:%M')
-            task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
-            append_to_doc(token, message_board_id, task_text)
-            print(f"[发布] {task_id} 已分配给 {assignee_name}（轮流）")
+        if success:
+            print("[OK] PM子agent已发布真实任务")
+            record_action('PM思考', '主动发布任务', who='aimashu')
+        else:
+            print("[WARN] PM子agent失败，跳过")
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
