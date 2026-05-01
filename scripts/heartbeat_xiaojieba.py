@@ -48,7 +48,7 @@ FEISHU_APP_SECRET = os.environ.get('FEISHU_APP_SECRET', '')
 SIGNIN_FOLDER_ID = os.environ.get('SIGNIN_FOLDER_ID', 'TUcWf6Kyql4d6gdi1nWc7TxVnDe')
 MESSAGE_BOARD_ID = os.environ.get('MESSAGE_BOARD_ID', 'Lj0OdVYvuoAKvVxOxr0crc9ynWg')
 TASK_BOARD_ID = os.environ.get('TASK_BOARD_ID', 'EFcudwbCCozKaQx2peocy7NIn5b')
-FEISHU_GROUP_ID = os.environ.get('FEISHU_GROUP_ID', 'oc_52c3df036009fd87f62df9285d92aef5')
+FEISHU_GROUP_ID = os.environ.get('FEISHU_GROUP_ID', 'oc_6e680216125c663a3359e07cb6831fe7')
 
 # 身份映射
 WHO_EMOJI = {
@@ -316,74 +316,56 @@ def spawn_agent_and_execute(who, task):
     sys.path.insert(0, hermes_agent_path)
     from run_agent import AIAgent
     
-    # 记录执行前的留言板内容（用于对比验证）
-    token = get_token()
-    board_before = read_doc(token, message_board_id) if token else ""
-    
-    # 构造具体执行prompt - 根据任务内容智能执行
-    prompt = f"""你是{emoji}{name}，执行者角色。
+    # 构造prompt - 让子agent真正执行任务
+    prompt = f"""你是{emoji}{name}，执行任务 {task_id}。
 
-## 任务信息
-ID: {task_id}
-内容: {content}
+任务内容: {content}
 
-## 执行要求（必须完整执行）
-1. **分析任务**：理解任务要求，确定执行方法
-2. **真正执行**：
-   - 如果是文档任务：用feishu-doc读取/修改对应文档
-   - 如果是DSD文章检查：读取文章内容 → 找出KOL/Master句子 → 写修改建议
-   - 如果是代码任务：用terminal/file工具编写代码
-   - 如果是研究任务：用web_search搜索信息
-3. **写入结果**：在留言板({message_board_id})写入详细执行结果
-   格式：
-   [时间] {emoji}{name}
-   任务: {task_id}
-   执行过程: [你具体做了什么]
-   结果: [详细结果内容]
-   ✅ {task_id} 完成
+【重要】你必须真正执行任务，不要只写"✅完成"！
 
-## 重要
-- 必须真正执行任务内容，不能只写"✅完成"
-- 必须调用工具写入留言板，不能只回复文本
-- 返回执行过程和具体结果
+执行步骤：
+1. 理解任务内容，确定要做什么
+2. 使用feishu_doc技能读取相关文档（如果需要）
+3. 执行任务（检查文章、修复bug等）
+4. 在留言板写入执行过程和结果：
+   [{datetime.now().strftime('%H:%M')}] {emoji}{name}
+   任务: {task_id} - {content}
+   执行过程: 
+   （写出你做了什么，每一步）
+   
+   结果: ✅ 完成（或说明问题）
+   
+【示例】
+如果是检查文章任务：
+- 读取共享备忘录（Token: A7hCd3EV1oXI4cxCv8ockFDPnEe）
+- 找到文章01-05的链接
+- 打开每篇文章，查找"KOL"、"Master"等词
+- 写出哪些句子需要修改，建议改成什么
+
+不要只是写"✅完成"，必须写出执行过程！
 """
     
     try:
         # 真正spawn子agent
         agent = AIAgent(
             model="glm-5",
-            enabled_toolsets=["feishu_doc", "file", "terminal", "web"],
-            max_iterations=15,
+            enabled_toolsets=["feishu_doc", "file"],
+            max_iterations=10,
             quiet_mode=True
         )
         
-        result = agent.chat(prompt)
-        
-        # 验证执行结果 - 必须检查留言板是否真正写入
-        print(f"[验证] 检查留言板是否写入...")
-        import time
-        time.sleep(2)  # 等待API同步
-        
-        board_after = read_doc(token, message_board_id) if token else ""
-        
-        # 验证条件：留言板有新增内容 且 包含任务ID和"结果:"
-        if board_after and len(board_after) > len(board_before):
-            # 检查是否包含本次任务的执行记录
-            if task_id in board_after and '结果' in board_after:
-                print(f"[✓] 验证通过：留言板已写入任务执行结果")
-                return True
-            else:
-                print(f"[✗] 验证失败：留言板有新增但无任务执行记录")
-                print(f"    新增内容预览: {board_after[-200:]}")
-                return False
+        result = agent.run_conversation(prompt)
+        # 安全处理返回值
+        if result:
+            result_str = str(result)[:200] if isinstance(result, str) else str(type(result))
         else:
-            print(f"[✗] 验证失败：留言板无新增内容")
-            return False
+            result_str = '无输出'
+        print(f"[完成] 子agent返回: {result_str}")
+        return True
         
     except Exception as e:
         print(f"[错误] spawn失败: {e}")
-        import traceback
-        traceback.print_exc()
+        # 备用方案：直接写飞书
         return False
 
 

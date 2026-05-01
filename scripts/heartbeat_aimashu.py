@@ -489,24 +489,41 @@ def heartbeat_pm(who):
             task_text = f"\n[{now}] 🦬爱马仕 发布任务\n{next_task_id}: {task_content} → {assignee_emoji}{assignee_name}\n"
             append_to_doc(token, message_board_id, task_text)
     
-    # 8. 如果待执行任务不足，直接发布DSD任务
+    # 8. 如果待执行任务不足，检查是否需要发布DSD任务
     elif pending_count < 2:
-        print(f"\n[发布] 待执行任务不足，发布DSD任务")
+        # 检查留言板是否已有DSD任务（避免重复发布）
+        has_dsd_task = False
+        for line in message_board_content.split('\n'):
+            if '检查DSD文章' in line or '修复小结巴脚本' in line:
+                has_dsd_task = True
+                break
         
-        # 直接发布DSD文章检查任务
-        now = datetime.now().strftime('%H:%M')
-        
-        # T51: 小结巴检查文章
-        task1 = f"\n[{now}] 🦬爱马仕 发布任务\nT51: 检查DSD文章01-05，找出KOL/Master过于明显的句子，写出修改建议 → 🦜小结巴\n"
-        append_to_doc(token, message_board_id, task1)
-        print("[发布] T51 → 小结巴（检查文章01-05）")
-        
-        # T52: 阿呆修复脚本
-        task2 = f"\n[{now}] 🦬爱马仕 发布任务\nT52: 修复小结巴脚本bug - 让它能识别DSD任务并真正执行 → 🐂阿呆\n"
-        append_to_doc(token, message_board_id, task2)
-        print("[发布] T52 → 阿呆（修复脚本）")
-        
-        record_action('发布DSD任务', 'T51+T52', who='aimashu')
+        if not has_dsd_task:
+            print(f"\n[发布] 待执行任务不足且无DSD任务，发布新任务")
+            
+            # 动态生成任务ID（不硬编码T51/T52）
+            if all_tasks:
+                max_task_num = max(int(t[1:]) for t in all_tasks)
+                next_task_num = max_task_num + 1
+            else:
+                next_task_num = 1
+            
+            # 发布给小结巴
+            now = datetime.now().strftime('%H:%M')
+            task1_id = f"T{next_task_num}"
+            task1 = f"\n[{now}] 🦬爱马仕 发布任务\n{task1_id}: 检查DSD文章01-05，找出KOL/Master过于明显的句子，写出修改建议 → 🦜小结巴\n"
+            append_to_doc(token, message_board_id, task1)
+            print(f"[发布] {task1_id} → 小结巴（检查文章）")
+            
+            # 发布给阿呆
+            task2_id = f"T{next_task_num + 1}"
+            task2 = f"\n[{now}] 🦬爱马仕 发布任务\n{task2_id}: 修复小结巴脚本bug - 让它能识别DSD任务并真正执行 → 🐂阿呆\n"
+            append_to_doc(token, message_board_id, task2)
+            print(f"[发布] {task2_id} → 阿呆（修复脚本）")
+            
+            record_action('发布DSD任务', f'{task1_id}+{task2_id}', who='aimashu')
+        else:
+            print("[OK] 留言板已有DSD任务，不重复发布")
     else:
         # 检查是否有待执行任务
         if has_pending_tasks(message_board_content):
